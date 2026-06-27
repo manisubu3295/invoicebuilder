@@ -29,6 +29,18 @@ frontend-err.txt
 dist/
 build/
 
+# Generated PDF files
+backend/uploads/pdfs/
+
+# PM2
+logs/
+.pm2/
+pids/
+
+# Temp scripts
+backend/capture-guide-screenshots.js
+capture-guide-screenshots.js
+
 # OS
 .DS_Store
 Thumbs.db

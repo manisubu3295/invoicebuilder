@@ -2,37 +2,88 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 const { sequelize, Invoice } = require('./models');
 
 const app = express();
+const isProd = process.env.NODE_ENV === 'production';
 
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true,
+// Security headers — disable CSP so PDF/CDN assets load correctly
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/clients', require('./routes/clients'));
-app.use('/api/invoices', require('./routes/invoices'));
-app.use('/api/quotations', require('./routes/quotations'));
-app.use('/api/jobs', require('./routes/jobs'));
-app.use('/api/drivers', require('./routes/drivers'));
-app.use('/api/vehicles', require('./routes/vehicles'));
-app.use('/api/reports', require('./routes/reports'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/settings', require('./routes/settings'));
-app.use('/api/deliveries', require('./routes/deliveries'));
+// Request logging (combined in prod, dev format otherwise)
+app.use(morgan(isProd ? 'combined' : 'dev'));
+
+// Gzip compression
+app.use(compression());
+
+// CORS — only needed in dev; in prod the frontend is served from the same origin
+if (!isProd) {
+  app.use(cors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    credentials: true,
+  }));
+}
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Rate limiting
+app.use('/api/auth/login', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { message: 'Too many login attempts, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+app.use('/api', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+// API routes
+app.use('/api/auth',         require('./routes/auth'));
+app.use('/api/clients',      require('./routes/clients'));
+app.use('/api/invoices',     require('./routes/invoices'));
+app.use('/api/quotations',   require('./routes/quotations'));
+app.use('/api/jobs',         require('./routes/jobs'));
+app.use('/api/drivers',      require('./routes/drivers'));
+app.use('/api/vehicles',     require('./routes/vehicles'));
+app.use('/api/reports',      require('./routes/reports'));
+app.use('/api/users',        require('./routes/users'));
+app.use('/api/settings',     require('./routes/settings'));
+app.use('/api/deliveries',   require('./routes/deliveries'));
 app.use('/api/item-catalog', require('./routes/itemCatalog'));
 app.use('/api/job-attendance', require('./routes/jobAttendance'));
-app.use('/api/expenses', require('./routes/expenses'));
+app.use('/api/expenses',     require('./routes/expenses'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
 
+// Serve built frontend in production (same-origin, no CORS needed)
+if (isProd) {
+  const distPath = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(distPath, { maxAge: '7d', etag: true }));
+  // SPA fallback — all non-API routes serve index.html
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+// Global error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ message: 'Internal server error' });
+  res.status(err.status || 500).json({
+    message: isProd ? 'Internal server error' : err.message,
+  });
 });
 
 const PORT = process.env.PORT || 5000;
@@ -47,8 +98,8 @@ async function seedIfEmpty() {
     await User.create({
       id: uuidv4(),
       name: 'AK.BALAN',
-      email: 'akbtransportlogistics@gmail.com',
-      passwordHash: await bcrypt.hash('Admin@AKB2026', 10),
+      email: process.env.ADMIN_EMAIL || 'akbtransportlogistics@gmail.com',
+      passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD || 'Admin@AKB2026', 10),
       role: 'admin',
       phone: '+6584590123',
       isActive: true,
@@ -79,7 +130,12 @@ async function markOverdueInvoices() {
 
 async function startServer() {
   try {
+    // SQLite performance pragmas
     await sequelize.query('PRAGMA foreign_keys = OFF');
+    await sequelize.query('PRAGMA journal_mode = WAL');
+    await sequelize.query('PRAGMA synchronous = NORMAL');
+    await sequelize.query('PRAGMA cache_size = -32000'); // 32 MB
+
     // Clean up any leftover backup tables from failed previous syncs
     const [tables] = await sequelize.query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_backup'");
     for (const { name } of tables) {
@@ -87,13 +143,31 @@ async function startServer() {
     }
     await sequelize.sync({ force: false, alter: true });
     await sequelize.query('PRAGMA foreign_keys = ON');
-    console.log('Database ready (SQLite)');
+
+    console.log('Database ready (SQLite, WAL mode)');
     await seedIfEmpty();
     await markOverdueInvoices();
     setInterval(markOverdueInvoices, 60 * 60 * 1000);
-    app.listen(PORT, () => console.log(`AKB API running on http://localhost:${PORT}`));
+
+    const server = app.listen(PORT, () =>
+      console.log(`AKB API running on http://localhost:${PORT} [${process.env.NODE_ENV || 'development'}]`)
+    );
+
+    // Graceful shutdown
+    const shutdown = (signal) => {
+      console.log(`${signal} received. Shutting down gracefully…`);
+      server.close(() => {
+        sequelize.close();
+        console.log('Server closed.');
+        process.exit(0);
+      });
+      setTimeout(() => process.exit(1), 10000); // force-exit after 10s
+    };
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT',  () => shutdown('SIGINT'));
+
   } catch (err) {
-    console.error('DB connection failed:', err.message);
+    console.error('Startup failed:', err.message);
     process.exit(1);
   }
 }
