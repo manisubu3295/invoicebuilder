@@ -112,7 +112,7 @@ onMounted(async () => {
       <h2 class="section-label mb-5 pb-2 border-b border-gray-100 dark:border-slate-700">Company Information</h2>
       <div class="space-y-5">
         <div class="input-group"><label class="input-label">Company Name *</label><input v-model="form.companyName" class="input-field" placeholder="e.g. AKB Transport Pte Ltd"/></div>
-        <div class="grid grid-cols-2 gap-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div class="input-group"><label class="input-label">Registration / UEN</label><input v-model="form.registrationNo" class="input-field" placeholder="202300001Z"/></div>
           <div class="input-group">
             <label class="input-label">Logo Initials <span class="normal-case font-normal text-gray-400 dark:text-slate-500 text-xs">(3 letters)</span></label>
@@ -120,7 +120,7 @@ onMounted(async () => {
           </div>
         </div>
         <div class="input-group"><label class="input-label">Address</label><textarea v-model="form.address" class="input-field" rows="3"></textarea></div>
-        <div class="grid grid-cols-2 gap-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div class="input-group"><label class="input-label">Phone</label><input v-model="form.phone" class="input-field" placeholder="+65 8888 0000"/></div>
           <div class="input-group"><label class="input-label">Email</label><input v-model="form.email" type="email" class="input-field" placeholder="info@company.com"/></div>
         </div>
@@ -133,7 +133,7 @@ onMounted(async () => {
       <h2 class="section-label mb-5 pb-2 border-b border-gray-100 dark:border-slate-700">Bank & Payment Details</h2>
       <div class="space-y-5">
         <div class="input-group"><label class="input-label">Bank Name</label><input v-model="form.bankName" class="input-field" placeholder="DBS Bank, OCBC…"/></div>
-        <div class="grid grid-cols-2 gap-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div class="input-group"><label class="input-label">Account Number</label><input v-model="form.bankAccountNo" class="input-field" placeholder="123-456789-0"/></div>
           <div class="input-group"><label class="input-label">Account Name</label><input v-model="form.bankAccountName" class="input-field"/></div>
         </div>
@@ -148,7 +148,7 @@ onMounted(async () => {
     <div class="card mb-6">
       <h2 class="section-label mb-5 pb-2 border-b border-gray-100 dark:border-slate-700">Document Settings</h2>
       <div class="space-y-5">
-        <div class="grid grid-cols-2 gap-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div class="input-group"><label class="input-label">Currency Code</label><input v-model="form.currency" class="input-field" placeholder="SGD" maxlength="5"/></div>
           <div class="input-group"><label class="input-label">Currency Symbol</label><input v-model="form.currencySymbol" class="input-field" placeholder="S$" maxlength="5"/></div>
         </div>

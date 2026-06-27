@@ -16,6 +16,9 @@ module.exports = (sequelize, DataTypes) => {
     endAddress: { type: DataTypes.STRING(255) },
     status: { type: DataTypes.STRING, defaultValue: 'started' },
     notes: { type: DataTypes.TEXT },
+    currentLat: { type: DataTypes.FLOAT },
+    currentLng: { type: DataTypes.FLOAT },
+    lastPingAt: { type: DataTypes.DATE },
   }, {
     tableName: 'job_attendance',
     timestamps: true,

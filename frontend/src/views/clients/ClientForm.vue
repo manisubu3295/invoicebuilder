@@ -46,7 +46,7 @@ async function submit() {
           <input v-model="form.clientCode" class="input-field uppercase" maxlength="10"/>
         </div>
         <div class="input-group"><label class="input-label">Contact Person</label><input v-model="form.contactPerson" class="input-field"/></div>
-        <div class="grid grid-cols-2 gap-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div class="input-group"><label class="input-label">Email</label><input v-model="form.email" type="email" class="input-field"/></div>
           <div class="input-group"><label class="input-label">Phone</label><input v-model="form.phone" class="input-field"/></div>
         </div>

@@ -429,6 +429,22 @@ async function generatePDF(html, filename) {
   return outputPath;
 }
 
+async function generatePDFBuffer(html) {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+  const page = await browser.newPage();
+  await page.setContent(html, { waitUntil: 'networkidle0' });
+  const buffer = await page.pdf({
+    format: 'A4',
+    margin: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
+    printBackground: true,
+  });
+  await browser.close();
+  return buffer;
+}
+
 async function generateInvoicePDF(invoice, client, items, settings) {
   const html = invoice.invoiceType === 'delivery'
     ? buildDeliveryInvoiceHtml(invoice, client, items, settings)
@@ -443,4 +459,223 @@ async function generateQuotationPDF(quotation, client, items, settings) {
   return generatePDF(html, filename);
 }
 
-module.exports = { generateInvoicePDF, generateQuotationPDF };
+function buildCompanyHeader(settings) {
+  const sym = settings.currencySymbol || 'S$';
+  const addrLines = (settings.address || '').split('\n').filter(Boolean).map(l => `<div>${l}</div>`).join('');
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;">
+    <div>
+      <div style="font-size:16px;font-weight:bold;color:#111827;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">${settings.companyName || 'My Company'}</div>
+      ${settings.registrationNo ? `<div style="font-size:10.5px;color:#6b7280;margin-bottom:2px;">${settings.registrationNo}</div>` : ''}
+      <div style="font-size:11px;color:#4b5563;line-height:1.7;margin-top:4px;">${addrLines}</div>
+      <div style="font-size:11px;color:#4b5563;margin-top:2px;">
+        ${settings.phone ? `Tel: ${settings.phone}` : ''}
+        ${settings.phone && settings.email ? ' &nbsp;|&nbsp; ' : ''}
+        ${settings.email ? `<a href="mailto:${settings.email}">${settings.email}</a>` : ''}
+      </div>
+    </div>
+    <div>${getLogoHtml(settings)}</div>
+  </div>`;
+}
+
+async function generateSOAPDF(client, invoices, company) {
+  const sym = (company && company.currencySymbol) || 'S$';
+  const today = formatDate(new Date().toISOString().slice(0, 10));
+
+  const totalBilled = invoices.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0);
+  const totalPaid = invoices.reduce((s, i) => {
+    return s + (i.payments || []).reduce((ps, p) => ps + parseFloat(p.amount || 0), 0);
+  }, 0);
+  const balance = totalBilled - totalPaid;
+
+  const rows = invoices.map(inv => {
+    const paid = (inv.payments || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    const invBalance = parseFloat(inv.totalAmount || 0) - paid;
+    const statusColor = inv.status === 'paid' ? '#16a34a' : inv.status === 'overdue' ? '#dc2626' : '#d97706';
+    return `<tr>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;font-weight:600;">${inv.invoiceNo}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;">${formatDate(inv.date)}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;">${inv.dueDate ? formatDate(inv.dueDate) : '—'}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;">${formatCurrency(inv.totalAmount, sym)}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;color:#16a34a;">${formatCurrency(paid, sym)}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;font-weight:${invBalance > 0 ? 'bold' : 'normal'};color:${invBalance > 0 ? '#dc2626' : '#374151'};">${formatCurrency(invBalance, sym)}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:10px;text-align:center;">
+        <span style="background:${statusColor}1a;color:${statusColor};padding:2px 8px;border-radius:10px;font-weight:600;text-transform:uppercase;">${inv.status}</span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+  ${buildCompanyHeader(company || {})}
+  <div style="border-top:2.5px solid #111827;border-bottom:1px solid #e5e7eb;padding:12px 0;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="font-size:20px;font-weight:bold;color:#111827;letter-spacing:3px;">STATEMENT OF ACCOUNT</div>
+    <div style="font-size:11px;text-align:right;color:#6b7280;">As at ${today}</div>
+  </div>
+  <div style="margin-bottom:18px;padding:12px 14px;background:#f9fafb;border-radius:6px;font-size:11px;">
+    <div style="font-weight:bold;font-size:13px;color:#111827;margin-bottom:4px;">${client.companyName}</div>
+    ${client.contactPerson ? `<div>Attn: ${client.contactPerson}</div>` : ''}
+    ${client.address ? `<div style="color:#6b7280;">${client.address}</div>` : ''}
+    ${client.email ? `<div style="color:#6b7280;">${client.email}</div>` : ''}
+    ${client.phone ? `<div style="color:#6b7280;">${client.phone}</div>` : ''}
+  </div>
+  <table style="margin-bottom:20px;">
+    <thead><tr>
+      <th style="text-align:left;">Invoice No</th>
+      <th style="text-align:center;width:13%;">Date</th>
+      <th style="text-align:center;width:13%;">Due Date</th>
+      <th style="text-align:right;width:14%;">Amount</th>
+      <th style="text-align:right;width:14%;">Paid</th>
+      <th style="text-align:right;width:14%;">Balance</th>
+      <th style="text-align:center;width:10%;">Status</th>
+    </tr></thead>
+    <tbody>
+      ${rows || '<tr><td colspan="7" style="text-align:center;padding:20px;color:#9ca3af;">No invoices found.</td></tr>'}
+    </tbody>
+  </table>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:24px;">
+    <table style="width:260px;border-collapse:collapse;font-size:11px;">
+      <tr><td style="padding:7px 12px;color:#6b7280;">Total Billed</td><td style="padding:7px 12px;text-align:right;font-weight:600;">${formatCurrency(totalBilled, sym)}</td></tr>
+      <tr style="background:#f9fafb;"><td style="padding:7px 12px;color:#16a34a;">Total Paid</td><td style="padding:7px 12px;text-align:right;font-weight:600;color:#16a34a;">${formatCurrency(totalPaid, sym)}</td></tr>
+      <tr style="background:#111827;color:#fff;"><td style="padding:9px 12px;font-weight:bold;">Outstanding Balance</td><td style="padding:9px 12px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(balance, sym)}</td></tr>
+    </table>
+  </div>
+  <div style="font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px;">
+    This statement was generated on ${today}. Please contact us if you have any queries regarding your account.
+  </div>
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+async function generatePayrollPDF(rows, year, month, company) {
+  const sym = (company && company.currencySymbol) || 'S$';
+  const today = formatDate(new Date().toISOString().slice(0, 10));
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const periodLabel = month ? `${MONTH_NAMES[month - 1]} ${year}` : `Year ${year}`;
+
+  const totals = rows.reduce((acc, r) => {
+    acc.grossPay += r.grossPay;
+    acc.cpfEmployee += r.cpfEmployee;
+    acc.cpfEmployer += r.cpfEmployer;
+    acc.netPay += r.netPay;
+    return acc;
+  }, { grossPay: 0, cpfEmployee: 0, cpfEmployer: 0, netPay: 0 });
+
+  const tableRows = rows.map(r => `<tr>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;font-weight:600;">${r.name}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;">${r.daysWorked}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;">${r.dailyRate > 0 ? formatCurrency(r.dailyRate, sym) : '<span style="color:#d97706;">Not set</span>'}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;font-weight:600;">${formatCurrency(r.grossPay, sym)}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;color:#dc2626;">${formatCurrency(r.cpfEmployee, sym)}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;color:#6b7280;">${formatCurrency(r.cpfEmployer, sym)}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;font-weight:bold;color:#111827;">${formatCurrency(r.netPay, sym)}</td>
+  </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+  ${buildCompanyHeader(company || {})}
+  <div style="border-top:2.5px solid #111827;border-bottom:1px solid #e5e7eb;padding:12px 0;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="font-size:18px;font-weight:bold;color:#111827;letter-spacing:2px;">PAYROLL SUMMARY</div>
+    <div style="font-size:12px;font-weight:600;color:#4b5563;">${periodLabel}</div>
+  </div>
+  <table style="margin-bottom:20px;">
+    <thead><tr>
+      <th style="text-align:left;">Driver</th>
+      <th style="text-align:center;width:10%;">Days</th>
+      <th style="text-align:right;width:13%;">Daily Rate</th>
+      <th style="text-align:right;width:14%;">Gross Pay</th>
+      <th style="text-align:right;width:14%;">CPF (Emp 20%)</th>
+      <th style="text-align:right;width:14%;">CPF (Employer 17%)</th>
+      <th style="text-align:right;width:13%;">Net Pay</th>
+    </tr></thead>
+    <tbody>
+      ${tableRows || '<tr><td colspan="7" style="text-align:center;padding:20px;color:#9ca3af;">No payroll data.</td></tr>'}
+      <tr style="background:#111827;color:#fff;font-weight:bold;">
+        <td style="border:1px solid #111827;padding:10px;" colspan="3">TOTALS</td>
+        <td style="border:1px solid #111827;padding:10px;text-align:right;">${formatCurrency(totals.grossPay, sym)}</td>
+        <td style="border:1px solid #111827;padding:10px;text-align:right;">${formatCurrency(totals.cpfEmployee, sym)}</td>
+        <td style="border:1px solid #111827;padding:10px;text-align:right;">${formatCurrency(totals.cpfEmployer, sym)}</td>
+        <td style="border:1px solid #111827;padding:10px;text-align:right;">${formatCurrency(totals.netPay, sym)}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div style="font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px;display:flex;justify-content:space-between;">
+    <span>CPF rates: Employee 20% | Employer 17% (standard rates — verify against CPF Board for age-based adjustments)</span>
+    <span style="font-weight:bold;color:#dc2626;">CONFIDENTIAL — For internal use only</span>
+  </div>
+  <div style="font-size:10px;color:#9ca3af;margin-top:6px;">Generated on ${today}</div>
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+async function generateFleetCompliancePDF(vehicles, company) {
+  const today = new Date().toISOString().slice(0, 10);
+  const todayStr = formatDate(today);
+
+  function cellStyle(dateStr) {
+    if (!dateStr) return 'background:#f3f4f6;color:#9ca3af;';
+    const diff = Math.ceil((new Date(dateStr) - new Date()) / 86400000);
+    if (diff < 0) return 'background:#fee2e2;color:#dc2626;font-weight:bold;';
+    if (diff <= 30) return 'background:#fef3c7;color:#d97706;font-weight:bold;';
+    return 'background:#dcfce7;color:#16a34a;';
+  }
+
+  function overallStatus(v) {
+    const dates = [v.coeExpiry, v.roadTaxExpiry, v.insuranceExpiry, v.inspectionDue].filter(Boolean);
+    if (!dates.length) return { label: 'Unknown', color: '#9ca3af' };
+    const minDiff = Math.min(...dates.map(d => Math.ceil((new Date(d) - new Date()) / 86400000)));
+    if (minDiff < 0) return { label: 'Expired', color: '#dc2626' };
+    if (minDiff <= 30) return { label: 'Due Soon', color: '#d97706' };
+    return { label: 'OK', color: '#16a34a' };
+  }
+
+  const rows = vehicles.map(v => {
+    const os = overallStatus(v);
+    return `<tr>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;font-weight:bold;">${v.plateNumber}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;color:#4b5563;">${v.type || '—'} ${v.size ? '(' + v.size + ')' : ''}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;${cellStyle(v.coeExpiry)}">${v.coeExpiry ? formatDate(v.coeExpiry) : '—'}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;${cellStyle(v.roadTaxExpiry)}">${v.roadTaxExpiry ? formatDate(v.roadTaxExpiry) : '—'}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;${cellStyle(v.insuranceExpiry)}">${v.insuranceExpiry ? formatDate(v.insuranceExpiry) : '—'}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;${cellStyle(v.inspectionDue)}">${v.inspectionDue ? formatDate(v.inspectionDue) : '—'}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:10px;text-align:center;">
+        <span style="background:${os.color}1a;color:${os.color};padding:2px 8px;border-radius:10px;font-weight:700;">${os.label}</span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+  ${buildCompanyHeader(company || {})}
+  <div style="border-top:2.5px solid #111827;border-bottom:1px solid #e5e7eb;padding:12px 0;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="font-size:18px;font-weight:bold;color:#111827;letter-spacing:2px;">FLEET COMPLIANCE REPORT</div>
+    <div style="font-size:11px;color:#6b7280;">As at ${todayStr}</div>
+  </div>
+  <table style="margin-bottom:20px;">
+    <thead><tr>
+      <th style="text-align:left;">Plate</th>
+      <th style="text-align:left;">Type</th>
+      <th style="text-align:center;width:12%;">COE Expiry</th>
+      <th style="text-align:center;width:12%;">Road Tax</th>
+      <th style="text-align:center;width:12%;">Insurance</th>
+      <th style="text-align:center;width:12%;">Inspection</th>
+      <th style="text-align:center;width:10%;">Status</th>
+    </tr></thead>
+    <tbody>
+      ${rows || '<tr><td colspan="7" style="text-align:center;padding:20px;color:#9ca3af;">No vehicles found.</td></tr>'}
+    </tbody>
+  </table>
+  <div style="display:flex;gap:20px;font-size:10px;margin-bottom:12px;">
+    <span style="background:#fee2e21a;color:#dc2626;padding:2px 10px;border-radius:10px;font-weight:600;border:1px solid #fca5a5;">Red = Expired</span>
+    <span style="background:#fef3c71a;color:#d97706;padding:2px 10px;border-radius:10px;font-weight:600;border:1px solid #fcd34d;">Amber = &lt;30 days</span>
+    <span style="background:#dcfce71a;color:#16a34a;padding:2px 10px;border-radius:10px;font-weight:600;border:1px solid #86efac;">Green = OK</span>
+    <span style="background:#f3f4f6;color:#9ca3af;padding:2px 10px;border-radius:10px;font-weight:600;border:1px solid #e5e7eb;">Gray = Not set</span>
+  </div>
+  <div style="font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px;">
+    Generated on ${todayStr}. Please ensure all documents are renewed before their expiry dates.
+  </div>
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+module.exports = { generateInvoicePDF, generateQuotationPDF, generateSOAPDF, generatePayrollPDF, generateFleetCompliancePDF };

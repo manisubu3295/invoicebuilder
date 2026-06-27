@@ -65,6 +65,15 @@ export const reportsApi = {
   driverSummary: () => api.get('/reports/driver-summary'),
   vehicleSummary: () => api.get('/reports/vehicle-summary'),
   expenseSummary: () => api.get('/reports/expense-summary'),
+  attendance: (params) => api.get('/reports/attendance', { params }),
+  pnl: (year) => api.get('/reports/pnl', { params: { year } }),
+  soa: (clientId) => api.get(`/reports/soa/${clientId}`),
+  soaPdf: (clientId) => api.get(`/reports/soa/${clientId}/pdf`, { responseType: 'blob' }),
+  payroll: (params) => api.get('/reports/payroll', { params }),
+  payrollPdf: (params) => api.get('/reports/payroll/pdf', { params, responseType: 'blob' }),
+  jobSummary: (params) => api.get('/reports/job-summary', { params }),
+  arAction: () => api.get('/reports/ar-action'),
+  fleetCompliancePdf: () => api.get('/reports/fleet-compliance/pdf', { responseType: 'blob' }),
 };
 
 export const jobAttendanceApi = {
@@ -72,6 +81,8 @@ export const jobAttendanceApi = {
   activeSessions: () => api.get('/job-attendance/active'),
   checkin: (data) => api.post('/job-attendance', data),
   checkout: (id, data) => api.put(`/job-attendance/${id}/end`, data),
+  ping: (id, data) => api.put(`/job-attendance/${id}/ping`, data),
+  forceEnd: (id) => api.put(`/job-attendance/${id}/force-end`),
 };
 
 export const expensesApi = {

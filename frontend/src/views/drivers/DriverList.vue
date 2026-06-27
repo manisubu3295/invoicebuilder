@@ -12,7 +12,7 @@ const editingId = ref(null);
 const form = ref(blank());
 
 function blank() {
-  return { name: '', email: '', phone: '', password: '', licenseNumber: '', licenseExpiry: '', assignedVehicleId: '', isActive: true };
+  return { name: '', email: '', phone: '', password: '', licenseNumber: '', licenseExpiry: '', licenseClass: '', nric: '', emergencyContact: '', emergencyPhone: '', assignedVehicleId: '', isActive: true, dailyRate: '' };
 }
 
 function licenseWarning(expiry) {
@@ -38,8 +38,13 @@ function openEdit(d) {
     password: '',
     licenseNumber: d.licenseNumber || '',
     licenseExpiry: d.licenseExpiry || '',
+    licenseClass: d.licenseClass || '',
+    nric: d.nric || '',
+    emergencyContact: d.emergencyContact || '',
+    emergencyPhone: d.emergencyPhone || '',
     assignedVehicleId: d.assignedVehicleId || '',
     isActive: d.user?.isActive ?? true,
+    dailyRate: d.dailyRate || '',
   };
   error.value = '';
   showForm.value = true;
@@ -106,8 +111,22 @@ onMounted(async () => {
           <label class="input-label">Password {{ editingId ? '(leave blank to keep)' : '*' }}</label>
           <input v-model="form.password" type="password" class="input-field"/>
         </div>
+        <div class="input-group"><label class="input-label">NRIC / FIN</label><input v-model="form.nric" class="input-field" placeholder="e.g. S1234567A"/></div>
+        <div class="input-group">
+          <label class="input-label">License Class</label>
+          <select v-model="form.licenseClass" class="input-field">
+            <option value="">—</option>
+            <option>Class 3</option><option>Class 3A</option><option>Class 4</option><option>Class 4A</option><option>Class 5</option>
+          </select>
+        </div>
         <div class="input-group"><label class="input-label">License No</label><input v-model="form.licenseNumber" class="input-field"/></div>
         <div class="input-group"><label class="input-label">License Expiry</label><input v-model="form.licenseExpiry" type="date" class="input-field"/></div>
+        <div class="input-group"><label class="input-label">Emergency Contact Name</label><input v-model="form.emergencyContact" class="input-field" placeholder="Next of kin name"/></div>
+        <div class="input-group"><label class="input-label">Emergency Phone</label><input v-model="form.emergencyPhone" class="input-field" placeholder="+65 9xxx xxxx"/></div>
+        <div class="input-group">
+          <label class="input-label">Daily Rate (S$)</label>
+          <input v-model="form.dailyRate" type="number" step="0.01" class="input-field" placeholder="e.g. 120.00"/>
+        </div>
         <div class="input-group sm:col-span-2">
           <label class="input-label">Assigned Vehicle</label>
           <select v-model="form.assignedVehicleId" class="input-field">
@@ -131,21 +150,27 @@ onMounted(async () => {
     <div class="card p-0 overflow-hidden">
       <table class="mat-table">
         <thead>
-          <tr><th>Name</th><th>Email</th><th>Phone</th><th>License No</th><th>Expiry</th><th>Vehicle</th><th>Status</th><th class="w-10"></th></tr>
+          <tr><th>Name</th><th>NRIC</th><th>Phone</th><th>License</th><th>Expiry</th><th>Class</th><th>Daily Rate</th><th>Vehicle</th><th>Status</th><th class="w-10"></th></tr>
         </thead>
         <tbody>
-          <tr v-if="loading"><td colspan="8" class="text-center py-12 text-gray-400">Loading…</td></tr>
-          <tr v-else-if="!drivers.length"><td colspan="8" class="text-center py-12 text-gray-400">No drivers yet.</td></tr>
+          <tr v-if="loading"><td colspan="10" class="text-center py-12 text-gray-400">Loading…</td></tr>
+          <tr v-else-if="!drivers.length"><td colspan="10" class="text-center py-12 text-gray-400">No drivers yet.</td></tr>
           <tr v-for="d in drivers" :key="d.id" :class="!d.user?.isActive ? 'opacity-50' : ''">
-            <td class="font-medium text-gray-900 dark:text-slate-100">{{ d.user?.name }}</td>
-            <td class="text-gray-600 dark:text-slate-400">{{ d.user?.email }}</td>
-            <td class="text-gray-500">{{ d.user?.phone || '—' }}</td>
-            <td class="text-gray-600">{{ d.licenseNumber || '—' }}</td>
-            <td :class="licenseWarning(d.licenseExpiry) ? 'text-red-700 font-medium' : 'text-gray-500'">
-              {{ fmt(d.licenseExpiry) }}
-              <span v-if="licenseWarning(d.licenseExpiry)" class="text-xs ml-1">⚠ Expiring</span>
+            <td>
+              <div class="font-medium text-gray-900 dark:text-slate-100">{{ d.user?.name }}</div>
+              <div class="text-xs text-gray-400">{{ d.user?.email }}</div>
+              <div v-if="d.emergencyContact" class="text-xs text-gray-400 mt-0.5">🆘 {{ d.emergencyContact }} {{ d.emergencyPhone }}</div>
             </td>
-            <td class="text-gray-500">{{ d.assignedVehicle ? `${d.assignedVehicle.plateNumber} (${d.assignedVehicle.size})` : '—' }}</td>
+            <td class="text-gray-500 text-sm">{{ d.nric || '—' }}</td>
+            <td class="text-gray-500">{{ d.user?.phone || '—' }}</td>
+            <td class="text-gray-600 text-sm">{{ d.licenseNumber || '—' }}</td>
+            <td :class="licenseWarning(d.licenseExpiry) ? 'text-red-700 font-medium' : 'text-gray-500'" class="text-sm">
+              {{ fmt(d.licenseExpiry) }}
+              <span v-if="licenseWarning(d.licenseExpiry)" class="text-xs ml-1">⚠</span>
+            </td>
+            <td class="text-gray-500 text-sm">{{ d.licenseClass || '—' }}</td>
+            <td class="text-gray-600 text-sm tabular-nums">{{ d.dailyRate ? `S$${parseFloat(d.dailyRate).toFixed(2)}` : '—' }}</td>
+            <td class="text-gray-500 text-sm">{{ d.assignedVehicle ? `${d.assignedVehicle.plateNumber} (${d.assignedVehicle.size})` : '—' }}</td>
             <td><span :class="d.user?.isActive ? 'badge-active' : 'badge-inactive'">{{ d.user?.isActive ? 'Active' : 'Inactive' }}</span></td>
             <td>
               <button @click="openEdit(d)" class="btn-icon text-gray-400 hover:text-blue-600" title="Edit">

@@ -1,5 +1,7 @@
 const router = require('express').Router();
-const { Invoice, InvoiceItem, Client, Payment, Job, Driver, Vehicle, User, JobAttendance, Expense } = require('../models');
+const { Invoice, InvoiceItem, Client, Payment, Job, Driver, Vehicle, User, JobAttendance, Expense, CompanySettings } = require('../models');
+const { sequelize } = require('../models');
+const { generateSOAPDF, generatePayrollPDF, generateFleetCompliancePDF } = require('../services/pdfService');
 const { Op, fn, col, literal } = require('sequelize');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
@@ -50,6 +52,37 @@ router.get('/dashboard', async (req, res) => {
       limit: 10,
     });
 
+    // Expiry alerts: anything expiring within 30 days
+    const in30 = new Date(); in30.setDate(in30.getDate() + 30);
+    const todayStr = now.toISOString().slice(0, 10);
+    const in30Str = in30.toISOString().slice(0, 10);
+
+    const vehiclesRaw = await Vehicle.findAll({ where: { status: 'active' } });
+    const expiryAlerts = [];
+    for (const v of vehiclesRaw) {
+      const checks = [
+        { label: 'COE', date: v.coeExpiry },
+        { label: 'Road Tax', date: v.roadTaxExpiry },
+        { label: 'Insurance', date: v.insuranceExpiry },
+        { label: 'Inspection', date: v.inspectionDue },
+      ];
+      for (const c of checks) {
+        if (c.date && c.date <= in30Str) {
+          const days = Math.ceil((new Date(c.date) - now) / 86400000);
+          expiryAlerts.push({ type: 'vehicle', plate: v.plateNumber, label: c.label, date: c.date, days, expired: days < 0 });
+        }
+      }
+    }
+    const driversRaw = await Driver.findAll({ include: [{ model: User, as: 'user', attributes: ['name'] }] });
+    for (const d of driversRaw) {
+      if (d.licenseExpiry && d.licenseExpiry <= in30Str) {
+        const days = Math.ceil((new Date(d.licenseExpiry) - now) / 86400000);
+        expiryAlerts.push({ type: 'driver', name: d.user?.name, label: 'License', date: d.licenseExpiry, days, expired: days < 0 });
+      }
+    }
+
+    const pendingExpenses = await Expense.count({ where: { status: 'pending' } });
+
     res.json({
       monthRevenue: parseFloat(monthRevenue?.total || 0),
       yearRevenue: parseFloat(yearRevenue?.total || 0),
@@ -59,6 +92,8 @@ router.get('/dashboard', async (req, res) => {
       overdueInvoices,
       recentInvoices,
       todayJobs,
+      expiryAlerts: expiryAlerts.sort((a, b) => a.days - b.days),
+      pendingExpenses,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -297,6 +332,359 @@ router.get('/expense-summary', async (req, res) => {
       driverSummary: Object.values(driverMap).sort((a, b) => b.total - a.total),
       vehicleFuel: Object.values(vehicleMap).sort((a, b) => (b.petrolCost + b.dieselCost) - (a.petrolCost + a.dieselCost)),
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/reports/attendance?year=YYYY&month=MM
+router.get('/attendance', async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const month = req.query.month ? parseInt(req.query.month) : null;
+
+    const whereDate = month
+      ? { [Op.between]: [`${year}-${String(month).padStart(2,'0')}-01`, `${year}-${String(month).padStart(2,'0')}-31`] }
+      : { [Op.between]: [`${year}-01-01`, `${year}-12-31`] };
+
+    const records = await JobAttendance.findAll({
+      where: { date: whereDate, status: 'completed' },
+      include: [
+        { model: Driver, as: 'driver', include: [{ model: User, as: 'user', attributes: ['name'] }] },
+        { model: Job, as: 'job', attributes: ['description'] },
+      ],
+      order: [['date', 'ASC']],
+    });
+
+    // Group by driver → by month
+    const driverMap = {};
+    for (const r of records) {
+      const dId = r.driverId;
+      const mo = r.date.slice(0, 7); // YYYY-MM
+      if (!driverMap[dId]) {
+        driverMap[dId] = { driverId: dId, name: r.driver?.user?.name || 'Unknown', months: {}, totalDays: 0 };
+      }
+      if (!driverMap[dId].months[mo]) driverMap[dId].months[mo] = 0;
+      driverMap[dId].months[mo]++;
+      driverMap[dId].totalDays++;
+    }
+
+    res.json(Object.values(driverMap).sort((a, b) => b.totalDays - a.totalDays));
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/reports/pnl?year=YYYY
+router.get('/pnl', async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const start = `${year}-01-01`, end = `${year}-12-31`;
+
+    const paidInvoices = await Invoice.findAll({
+      where: { status: 'paid', paidDate: { [Op.between]: [start, end] } },
+      attributes: ['paidDate', 'totalAmount'],
+      raw: true,
+    });
+
+    const approvedExpenses = await Expense.findAll({
+      where: { status: 'approved', date: { [Op.between]: [start, end] } },
+      attributes: ['date', 'amount', 'category'],
+      raw: true,
+    });
+
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const mo = String(i + 1).padStart(2, '0');
+      const rev = paidInvoices.filter(inv => inv.paidDate?.startsWith(`${year}-${mo}`)).reduce((s, inv) => s + parseFloat(inv.totalAmount || 0), 0);
+      const exp = approvedExpenses.filter(e => e.date?.startsWith(`${year}-${mo}`)).reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+      return { month: i + 1, revenue: rev, expenses: exp, profit: rev - exp };
+    });
+
+    const totalRevenue = months.reduce((s, m) => s + m.revenue, 0);
+    const totalExpenses = months.reduce((s, m) => s + m.expenses, 0);
+
+    // Job profitability: per job, invoice revenue vs approved expenses
+    const jobs = await Job.findAll({
+      include: [
+        { model: Invoice, as: 'invoice', attributes: ['totalAmount', 'status'] },
+        { model: Expense, as: 'expenses', where: { status: 'approved' }, required: false, attributes: ['amount'] },
+        { model: Client, as: 'client', attributes: ['companyName'] },
+        { model: Driver, as: 'driver', include: [{ model: User, as: 'user', attributes: ['name'] }] },
+      ],
+      where: { fromDate: { [Op.between]: [start, end] } },
+    });
+
+    const jobProfitability = jobs.map(j => {
+      const revenue = j.invoice?.status === 'paid' ? parseFloat(j.invoice.totalAmount || 0) : 0;
+      const expenses = (j.expenses || []).reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+      return {
+        jobId: j.id,
+        description: j.description,
+        client: j.client?.companyName,
+        driver: j.driver?.user?.name,
+        fromDate: j.fromDate,
+        toDate: j.toDate,
+        revenue,
+        expenses,
+        profit: revenue - expenses,
+        invoiced: !!j.invoice,
+      };
+    }).sort((a, b) => b.profit - a.profit);
+
+    res.json({ year, months, totalRevenue, totalExpenses, totalProfit: totalRevenue - totalExpenses, jobProfitability });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ── Statement of Account ──
+router.get('/soa/:clientId', async (req, res) => {
+  try {
+    const client = await Client.findByPk(req.params.clientId);
+    if (!client) return res.status(404).json({ message: 'Client not found' });
+
+    const invoices = await Invoice.findAll({
+      where: { clientId: req.params.clientId },
+      include: [
+        { model: InvoiceItem, as: 'items' },
+        { model: Payment, as: 'payments', order: [['paymentDate', 'ASC']] },
+      ],
+      order: [['date', 'ASC']],
+    });
+
+    const totalBilled = invoices.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0);
+    const totalPaid = invoices.reduce((s, i) => {
+      return s + (i.payments || []).reduce((ps, p) => ps + parseFloat(p.amount || 0), 0);
+    }, 0);
+    const balance = totalBilled - totalPaid;
+
+    res.json({ client, invoices, totals: { totalBilled, totalPaid, balance } });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/soa/:clientId/pdf', async (req, res) => {
+  try {
+    const client = await Client.findByPk(req.params.clientId);
+    if (!client) return res.status(404).json({ message: 'Client not found' });
+
+    const invoices = await Invoice.findAll({
+      where: { clientId: req.params.clientId },
+      include: [{ model: Payment, as: 'payments', order: [['paymentDate', 'ASC']] }],
+      order: [['date', 'ASC']],
+    });
+
+    const settings = (await CompanySettings.findOne()) || {};
+    const buffer = await generateSOAPDF(client.toJSON(), invoices.map(i => i.toJSON()), settings.toJSON ? settings.toJSON() : settings);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="soa-${req.params.clientId}.pdf"`);
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ── Payroll ──
+router.get('/payroll', async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const month = req.query.month ? parseInt(req.query.month) : null;
+
+    const start = month
+      ? `${year}-${String(month).padStart(2,'0')}-01`
+      : `${year}-01-01`;
+    const end = month
+      ? `${year}-${String(month).padStart(2,'0')}-31`
+      : `${year}-12-31`;
+
+    const drivers = await Driver.findAll({
+      include: [{ model: User, as: 'user', attributes: ['id', 'name', 'email'] }],
+    });
+
+    const attendance = await JobAttendance.findAll({
+      where: { date: { [Op.between]: [start, end] }, status: 'completed' },
+      attributes: ['driverId'],
+      raw: true,
+    });
+
+    const daysMap = {};
+    for (const a of attendance) {
+      daysMap[a.driverId] = (daysMap[a.driverId] || 0) + 1;
+    }
+
+    const rows = drivers.map(d => {
+      const daysWorked = daysMap[d.id] || 0;
+      const dailyRate = parseFloat(d.dailyRate || 0);
+      const grossPay = daysWorked * dailyRate;
+      const cpfEmployee = grossPay * 0.20;
+      const cpfEmployer = grossPay * 0.17;
+      const netPay = grossPay - cpfEmployee;
+      return {
+        driverId: d.id,
+        name: d.user?.name || 'Unknown',
+        email: d.user?.email || '',
+        dailyRate,
+        daysWorked,
+        grossPay,
+        cpfEmployee,
+        cpfEmployer,
+        netPay,
+      };
+    });
+
+    res.json({ year, month, rows });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/payroll/pdf', async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const month = req.query.month ? parseInt(req.query.month) : null;
+
+    const start = month
+      ? `${year}-${String(month).padStart(2,'0')}-01`
+      : `${year}-01-01`;
+    const end = month
+      ? `${year}-${String(month).padStart(2,'0')}-31`
+      : `${year}-12-31`;
+
+    const drivers = await Driver.findAll({
+      include: [{ model: User, as: 'user', attributes: ['id', 'name', 'email'] }],
+    });
+
+    const attendance = await JobAttendance.findAll({
+      where: { date: { [Op.between]: [start, end] }, status: 'completed' },
+      attributes: ['driverId'],
+      raw: true,
+    });
+
+    const daysMap = {};
+    for (const a of attendance) {
+      daysMap[a.driverId] = (daysMap[a.driverId] || 0) + 1;
+    }
+
+    const rows = drivers.map(d => {
+      const daysWorked = daysMap[d.id] || 0;
+      const dailyRate = parseFloat(d.dailyRate || 0);
+      const grossPay = daysWorked * dailyRate;
+      const cpfEmployee = grossPay * 0.20;
+      const cpfEmployer = grossPay * 0.17;
+      const netPay = grossPay - cpfEmployee;
+      return { driverId: d.id, name: d.user?.name || 'Unknown', dailyRate, daysWorked, grossPay, cpfEmployee, cpfEmployer, netPay };
+    });
+
+    const settings = (await CompanySettings.findOne()) || {};
+    const buffer = await generatePayrollPDF(rows, year, month, settings.toJSON ? settings.toJSON() : settings);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="payroll-${year}-${month || 'full'}.pdf"`);
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ── Job Summary ──
+router.get('/job-summary', async (req, res) => {
+  try {
+    const { from, to, status, clientId, driverId } = req.query;
+    const where = {};
+    if (from && to) where.fromDate = { [Op.between]: [from, to] };
+    else if (from) where.fromDate = { [Op.gte]: from };
+    else if (to) where.toDate = { [Op.lte]: to };
+    if (status) where.status = status;
+    if (clientId) where.clientId = clientId;
+    if (driverId) where.driverId = driverId;
+
+    const jobs = await Job.findAll({
+      where,
+      include: [
+        { model: Client, as: 'client', attributes: ['companyName'] },
+        { model: Driver, as: 'driver', include: [{ model: User, as: 'user', attributes: ['name'] }] },
+        { model: Vehicle, as: 'vehicle', attributes: ['plateNumber', 'type'] },
+        { model: Invoice, as: 'invoice', attributes: ['invoiceNo', 'totalAmount', 'status'] },
+      ],
+      order: [['fromDate', 'DESC']],
+    });
+
+    const result = jobs.map(j => {
+      const days = j.fromDate && j.toDate
+        ? Math.ceil((new Date(j.toDate) - new Date(j.fromDate)) / 86400000) + 1
+        : null;
+      return {
+        jobId: j.id,
+        description: j.description,
+        client: j.client?.companyName || '—',
+        driver: j.driver?.user?.name || '—',
+        vehicle: j.vehicle ? `${j.vehicle.plateNumber} (${j.vehicle.type})` : '—',
+        fromDate: j.fromDate,
+        toDate: j.toDate,
+        days,
+        status: j.status,
+        invoiceNo: j.invoice?.invoiceNo || '—',
+        invoiceStatus: j.invoice?.status || '—',
+        amount: j.invoice ? parseFloat(j.invoice.totalAmount || 0) : 0,
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ── A/R Action List ──
+router.get('/ar-action', async (req, res) => {
+  try {
+    const invoices = await Invoice.findAll({
+      where: { status: { [Op.in]: ['sent', 'overdue'] } },
+      include: [
+        { model: Client, as: 'client', attributes: ['companyName', 'contactPerson', 'phone', 'email'] },
+        { model: Payment, as: 'payments', attributes: ['amount', 'paymentDate'], order: [['paymentDate', 'DESC']] },
+      ],
+      order: [['dueDate', 'ASC']],
+    });
+
+    const now = new Date();
+    const result = invoices.map(inv => {
+      const due = inv.dueDate ? new Date(inv.dueDate) : new Date(inv.date);
+      const daysOverdue = Math.floor((now - due) / 86400000);
+      const payments = inv.payments || [];
+      const lastPayment = payments.length ? payments.sort((a, b) => b.paymentDate > a.paymentDate ? 1 : -1)[0]?.paymentDate : null;
+      return {
+        invoiceId: inv.id,
+        invoiceNo: inv.invoiceNo,
+        clientName: inv.client?.companyName || '—',
+        contactPerson: inv.client?.contactPerson || '—',
+        phone: inv.client?.phone || '—',
+        email: inv.client?.email || '—',
+        amount: parseFloat(inv.totalAmount || 0),
+        invoiceDate: inv.date,
+        dueDate: inv.dueDate,
+        status: inv.status,
+        daysOverdue,
+        lastPaymentDate: lastPayment || null,
+      };
+    });
+
+    result.sort((a, b) => b.daysOverdue - a.daysOverdue);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ── Fleet Compliance PDF ──
+router.get('/fleet-compliance/pdf', async (req, res) => {
+  try {
+    const vehicles = await Vehicle.findAll({ order: [['plateNumber', 'ASC']] });
+    const settings = (await CompanySettings.findOne()) || {};
+    const buffer = await generateFleetCompliancePDF(vehicles.map(v => v.toJSON()), settings.toJSON ? settings.toJSON() : settings);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="fleet-compliance.pdf"');
+    res.send(buffer);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

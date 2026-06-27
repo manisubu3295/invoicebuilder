@@ -8,6 +8,11 @@ module.exports = (sequelize, DataTypes) => {
     size: { type: DataTypes.STRING }, // 10ft, 14ft, 24ft
     status: { type: DataTypes.STRING, defaultValue: 'active' },
     notes: { type: DataTypes.TEXT },
+    coeExpiry: { type: DataTypes.DATEONLY },
+    roadTaxExpiry: { type: DataTypes.DATEONLY },
+    insuranceExpiry: { type: DataTypes.DATEONLY },
+    inspectionDue: { type: DataTypes.DATEONLY },
+    mileage: { type: DataTypes.INTEGER },
   }, {
     tableName: 'vehicles',
     timestamps: true,

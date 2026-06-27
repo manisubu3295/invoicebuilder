@@ -1,6 +1,6 @@
 <script setup>
-import { ref, onMounted } from 'vue';
-import { reportsApi } from '../../api/index.js';
+import { ref, onMounted, watch } from 'vue';
+import { reportsApi, clientsApi, driversApi, vehiclesApi } from '../../api/index.js';
 
 const tab = ref('revenue');
 const aging = ref(null);
@@ -10,7 +10,41 @@ const revenueData = ref(null);
 const driverSummary = ref([]);
 const vehicleSummary = ref([]);
 const expenseSummary = ref(null);
+const attendanceData = ref([]);
+const attendanceYear = ref(new Date().getFullYear());
+const attendanceMonth = ref('');
+const pnlData = ref(null);
+const pnlYear = ref(new Date().getFullYear());
 const loading = ref(true);
+
+// SOA
+const soaClientId = ref('');
+const soaData = ref(null);
+const soaLoading = ref(false);
+
+// Payroll
+const payrollYear = ref(new Date().getFullYear());
+const payrollMonth = ref('');
+const payrollData = ref(null);
+const payrollLoading = ref(false);
+
+// Job Summary
+const jobSummaryFrom = ref('');
+const jobSummaryTo = ref('');
+const jobSummaryStatus = ref('');
+const jobSummaryClientId = ref('');
+const jobSummaryDriverId = ref('');
+const jobSummaryData = ref([]);
+
+// A/R Action
+const arData = ref([]);
+
+// Fleet Compliance
+const fleetData = ref([]);
+
+// Lists for dropdowns
+const clientsList = ref([]);
+const driversList = ref([]);
 
 function fmtSGD(v) { return `S$${parseFloat(v || 0).toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
 
@@ -27,16 +61,28 @@ async function loadRevenue() {
   revenueData.value = (await reportsApi.revenue(revenueYear.value)).data;
 }
 
+async function loadAttendance() {
+  const params = { year: attendanceYear.value };
+  if (attendanceMonth.value) params.month = attendanceMonth.value;
+  attendanceData.value = (await reportsApi.attendance(params)).data;
+}
+
+async function loadPnl() {
+  pnlData.value = (await reportsApi.pnl(pnlYear.value)).data;
+}
+
 onMounted(async () => {
   try {
-    [aging.value, clientSummary.value, driverSummary.value, vehicleSummary.value, expenseSummary.value] = await Promise.all([
+    [aging.value, clientSummary.value, driverSummary.value, vehicleSummary.value, expenseSummary.value, clientsList.value, driversList.value] = await Promise.all([
       reportsApi.aging().then(r => r.data),
       reportsApi.clientSummary().then(r => r.data),
       reportsApi.driverSummary().then(r => r.data),
       reportsApi.vehicleSummary().then(r => r.data),
       reportsApi.expenseSummary().then(r => r.data),
+      clientsApi.list().then(r => r.data),
+      driversApi.list().then(r => r.data),
     ]);
-    await loadRevenue();
+    await Promise.all([loadRevenue(), loadAttendance(), loadPnl()]);
   } finally { loading.value = false; }
 });
 
@@ -52,12 +98,97 @@ const TABS = [
   { key: 'drivers', label: 'Driver Report', icon: 'badge' },
   { key: 'vehicles', label: 'Vehicle Report', icon: 'directions_car' },
   { key: 'expenses', label: 'Expense Report', icon: 'payments' },
+  { key: 'attendance', label: 'Attendance', icon: 'event_available' },
+  { key: 'pnl', label: 'P&L', icon: 'account_balance' },
+  { key: 'soa', label: 'Statement of Account', icon: 'account_balance_wallet' },
+  { key: 'payroll', label: 'Payroll', icon: 'payments' },
+  { key: 'job-summary', label: 'Job Summary', icon: 'summarize' },
+  { key: 'ar', label: 'A/R Actions', icon: 'call_made' },
+  { key: 'fleet', label: 'Fleet Compliance', icon: 'verified' },
 ];
+
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function catLabel(c) {
   const map = { fuel_petrol: 'Petrol', fuel_diesel: 'Diesel', toll: 'Toll', parking: 'Parking', maintenance: 'Maintenance', other: 'Other' };
   return map[c] || c;
 }
+
+async function downloadPdf(apiCall, filename) {
+  const { data } = await apiCall;
+  const url = URL.createObjectURL(new Blob([data], { type: 'application/pdf' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function loadSoa() {
+  if (!soaClientId.value) return;
+  soaLoading.value = true;
+  try { soaData.value = (await reportsApi.soa(soaClientId.value)).data; }
+  catch (e) { console.error(e); }
+  finally { soaLoading.value = false; }
+}
+
+async function loadPayroll() {
+  payrollLoading.value = true;
+  try {
+    const params = { year: payrollYear.value };
+    if (payrollMonth.value) params.month = payrollMonth.value;
+    payrollData.value = (await reportsApi.payroll(params)).data;
+  } catch (e) { console.error(e); }
+  finally { payrollLoading.value = false; }
+}
+
+async function loadJobSummary() {
+  try {
+    const params = {};
+    if (jobSummaryFrom.value) params.from = jobSummaryFrom.value;
+    if (jobSummaryTo.value) params.to = jobSummaryTo.value;
+    if (jobSummaryStatus.value) params.status = jobSummaryStatus.value;
+    if (jobSummaryClientId.value) params.clientId = jobSummaryClientId.value;
+    if (jobSummaryDriverId.value) params.driverId = jobSummaryDriverId.value;
+    jobSummaryData.value = (await reportsApi.jobSummary(params)).data;
+  } catch (e) { console.error(e); }
+}
+
+async function loadArAction() {
+  try { arData.value = (await reportsApi.arAction()).data; }
+  catch (e) { console.error(e); }
+}
+
+async function loadFleet() {
+  try { fleetData.value = (await vehiclesApi.list()).data; }
+  catch (e) { console.error(e); }
+}
+
+function payrollTotals(rows) {
+  return (rows || []).reduce((acc, r) => {
+    acc.grossPay += r.grossPay || 0;
+    acc.cpfEmployee += r.cpfEmployee || 0;
+    acc.cpfEmployer += r.cpfEmployer || 0;
+    acc.netPay += r.netPay || 0;
+    return acc;
+  }, { grossPay: 0, cpfEmployee: 0, cpfEmployer: 0, netPay: 0 });
+}
+
+function fleetCellClass(dateStr) {
+  if (!dateStr) return 'text-gray-400';
+  const diff = Math.ceil((new Date(dateStr) - new Date()) / 86400000);
+  if (diff < 0) return 'text-red-700 font-semibold bg-red-50';
+  if (diff <= 30) return 'text-amber-700 font-semibold bg-amber-50';
+  return 'text-green-700 bg-green-50';
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+watch(tab, (newTab) => {
+  if (newTab === 'ar') loadArAction();
+  if (newTab === 'fleet') loadFleet();
+});
 </script>
 
 <template>
@@ -113,7 +244,7 @@ function catLabel(c) {
     <!-- ── Aging ── -->
     <div v-if="tab === 'aging'" class="card p-0">
       <div class="card-header"><span class="card-title">Invoice Aging</span></div>
-      <div class="grid grid-cols-3 gap-px bg-gray-100 dark:bg-slate-700 border-b border-gray-100 dark:border-slate-700">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-px bg-gray-100 dark:bg-slate-700 border-b border-gray-100 dark:border-slate-700">
         <div v-for="bucket in agingBuckets" :key="bucket" class="bg-white dark:bg-slate-800 px-5 py-4 text-center">
           <div class="section-label mb-1">{{ bucket }} days</div>
           <div class="text-xl font-light" :class="bucketColor(bucket)">{{ aging?.[bucket]?.length || 0 }}</div>
@@ -305,6 +436,432 @@ function catLabel(c) {
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- ── Attendance Report ── -->
+    <div v-if="tab === 'attendance'" class="space-y-4">
+      <div class="flex flex-wrap gap-3 items-end">
+        <div class="input-group w-32">
+          <label class="input-label">Year</label>
+          <input v-model.number="attendanceYear" type="number" class="input-field" min="2020" max="2099" @change="loadAttendance"/>
+        </div>
+        <div class="input-group w-36">
+          <label class="input-label">Month (optional)</label>
+          <select v-model="attendanceMonth" class="input-field" @change="loadAttendance">
+            <option value="">All months</option>
+            <option v-for="(m,i) in MONTH_NAMES" :key="i" :value="String(i+1).padStart(2,'0')">{{ m }}</option>
+          </select>
+        </div>
+        <button @click="exportCSV(attendanceData, 'attendance.csv')" class="btn-secondary h-9 px-3 text-sm">Export CSV</button>
+      </div>
+      <div class="card p-0">
+        <div class="card-header"><span class="card-title">Days Worked by Driver</span></div>
+        <div v-if="!attendanceData.length" class="py-8 text-center text-gray-400 text-sm">No completed attendance records for this period.</div>
+        <div v-else class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50 dark:bg-slate-700/40">
+                <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Driver</th>
+                <th v-for="(m,i) in MONTH_NAMES" :key="i" class="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">{{ m }}</th>
+                <th class="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="d in attendanceData" :key="d.driverId" class="border-t border-gray-100 dark:border-slate-700/40 hover:bg-gray-50/50">
+                <td class="px-5 py-3 font-medium text-gray-900 dark:text-slate-100">{{ d.name }}</td>
+                <td v-for="(m,i) in MONTH_NAMES" :key="i" class="px-3 py-3 text-center tabular-nums"
+                  :class="d.months[`${attendanceYear}-${String(i+1).padStart(2,'0')}`] ? 'text-blue-700 font-semibold' : 'text-gray-300'">
+                  {{ d.months[`${attendanceYear}-${String(i+1).padStart(2,'0')}`] || '—' }}
+                </td>
+                <td class="px-5 py-3 text-right font-bold text-gray-800 dark:text-slate-200">{{ d.totalDays }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── P&L Report ── -->
+    <div v-if="tab === 'pnl'" class="space-y-5">
+      <div class="flex gap-3 items-end">
+        <div class="input-group w-32">
+          <label class="input-label">Year</label>
+          <input v-model.number="pnlYear" type="number" class="input-field" min="2020" max="2099" @change="loadPnl"/>
+        </div>
+      </div>
+
+      <!-- Summary cards -->
+      <div v-if="pnlData" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="card text-center">
+          <div class="section-label mb-1">Total Revenue</div>
+          <div class="text-xl font-semibold text-green-700">{{ fmtSGD(pnlData.totalRevenue) }}</div>
+        </div>
+        <div class="card text-center">
+          <div class="section-label mb-1">Total Expenses</div>
+          <div class="text-xl font-semibold text-red-600">{{ fmtSGD(pnlData.totalExpenses) }}</div>
+        </div>
+        <div class="card text-center">
+          <div class="section-label mb-1">Net Profit</div>
+          <div class="text-xl font-bold" :class="pnlData.totalProfit >= 0 ? 'text-blue-700' : 'text-red-700'">{{ fmtSGD(pnlData.totalProfit) }}</div>
+        </div>
+      </div>
+
+      <!-- Monthly P&L -->
+      <div v-if="pnlData" class="card p-0">
+        <div class="card-header"><span class="card-title">Monthly Breakdown</span></div>
+        <table class="mat-table">
+          <thead><tr><th>Month</th><th class="text-right">Revenue</th><th class="text-right">Expenses</th><th class="text-right">Profit</th></tr></thead>
+          <tbody>
+            <tr v-for="m in pnlData.months" :key="m.month" class="border-t border-gray-100 dark:border-slate-700/40">
+              <td class="font-medium text-gray-800 dark:text-slate-200">{{ MONTH_NAMES[m.month-1] }} {{ pnlYear }}</td>
+              <td class="text-right tabular-nums text-green-700">{{ fmtSGD(m.revenue) }}</td>
+              <td class="text-right tabular-nums text-red-600">{{ m.expenses > 0 ? fmtSGD(m.expenses) : '—' }}</td>
+              <td class="text-right tabular-nums font-semibold" :class="m.profit >= 0 ? 'text-blue-700' : 'text-red-600'">{{ fmtSGD(m.profit) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Job profitability -->
+      <div v-if="pnlData?.jobProfitability?.length" class="card p-0">
+        <div class="card-header">
+          <span class="card-title">Job Profitability</span>
+          <button @click="exportCSV(pnlData.jobProfitability, 'job-profitability.csv')" class="btn-secondary h-8 px-3 text-xs">Export CSV</button>
+        </div>
+        <table class="mat-table">
+          <thead><tr><th>Job</th><th>Client</th><th>Driver</th><th>Dates</th><th class="text-right">Revenue</th><th class="text-right">Expenses</th><th class="text-right">Profit</th></tr></thead>
+          <tbody>
+            <tr v-for="j in pnlData.jobProfitability" :key="j.jobId">
+              <td class="font-medium text-gray-900 dark:text-slate-100 max-w-[180px] truncate">{{ j.description }}</td>
+              <td class="text-gray-500 text-sm">{{ j.client || '—' }}</td>
+              <td class="text-gray-500 text-sm">{{ j.driver || '—' }}</td>
+              <td class="text-gray-400 text-xs">{{ j.fromDate }} — {{ j.toDate }}</td>
+              <td class="text-right tabular-nums">
+                <span v-if="j.revenue > 0" class="text-green-700">{{ fmtSGD(j.revenue) }}</span>
+                <span v-else class="text-gray-300 text-xs italic">Not invoiced</span>
+              </td>
+              <td class="text-right tabular-nums text-red-600">{{ j.expenses > 0 ? fmtSGD(j.expenses) : '—' }}</td>
+              <td class="text-right tabular-nums font-semibold" :class="j.profit >= 0 ? 'text-blue-700' : 'text-red-600'">{{ fmtSGD(j.profit) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-else-if="pnlData" class="card text-center py-8 text-gray-400 text-sm">No jobs in this year.</div>
+    </div>
+
+    <!-- ── Statement of Account ── -->
+    <div v-if="tab === 'soa'" class="space-y-4">
+      <div class="card">
+        <div class="flex flex-wrap gap-3 items-end">
+          <div class="input-group flex-1 min-w-48">
+            <label class="input-label">Select Client</label>
+            <select v-model="soaClientId" class="input-field">
+              <option value="">— Select a client —</option>
+              <option v-for="c in clientsList" :key="c.id" :value="c.id">{{ c.companyName }}</option>
+            </select>
+          </div>
+          <button @click="loadSoa" :disabled="!soaClientId || soaLoading" class="btn-primary h-9 px-4">
+            {{ soaLoading ? 'Loading…' : 'Load Statement' }}
+          </button>
+          <button v-if="soaData"
+            @click="downloadPdf(reportsApi.soaPdf(soaClientId), `SOA-${soaData.client?.companyName || soaClientId}.pdf`)"
+            class="btn-secondary h-9 px-4">
+            <span class="material-icons" style="font-size:14px">picture_as_pdf</span> Download PDF
+          </button>
+        </div>
+      </div>
+      <div v-if="soaData" class="space-y-4">
+        <div class="card p-0">
+          <div class="card-header">
+            <span class="card-title">{{ soaData.client?.companyName }}</span>
+            <span class="text-xs text-gray-400">{{ soaData.client?.contactPerson }} &nbsp;|&nbsp; {{ soaData.client?.email }}</span>
+          </div>
+          <table class="mat-table">
+            <thead>
+              <tr>
+                <th>Invoice No</th>
+                <th class="text-center">Date</th>
+                <th class="text-center">Due Date</th>
+                <th class="text-right">Amount</th>
+                <th class="text-right">Paid</th>
+                <th class="text-right">Balance</th>
+                <th class="text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="!soaData.invoices?.length"><td colspan="7" class="text-center py-8 text-gray-400">No invoices found.</td></tr>
+              <tr v-for="inv in soaData.invoices" :key="inv.id">
+                <td class="font-medium">{{ inv.invoiceNo }}</td>
+                <td class="text-center text-sm text-gray-500">{{ fmtDate(inv.date) }}</td>
+                <td class="text-center text-sm text-gray-500">{{ fmtDate(inv.dueDate) }}</td>
+                <td class="text-right tabular-nums">{{ fmtSGD(inv.totalAmount) }}</td>
+                <td class="text-right tabular-nums text-green-700">{{ fmtSGD((inv.payments||[]).reduce((s,p)=>s+parseFloat(p.amount||0),0)) }}</td>
+                <td class="text-right tabular-nums font-medium" :class="(parseFloat(inv.totalAmount||0)-(inv.payments||[]).reduce((s,p)=>s+parseFloat(p.amount||0),0))>0?'text-red-700':'text-gray-400'">
+                  {{ fmtSGD(parseFloat(inv.totalAmount||0)-(inv.payments||[]).reduce((s,p)=>s+parseFloat(p.amount||0),0)) }}
+                </td>
+                <td class="text-center">
+                  <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+                    :class="inv.status==='paid'?'bg-green-50 text-green-700':inv.status==='overdue'?'bg-red-50 text-red-700':'bg-amber-50 text-amber-700'">
+                    {{ inv.status }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="flex justify-end">
+          <div class="card w-72 p-0">
+            <div class="flex justify-between px-4 py-2.5 text-sm border-b border-gray-100 dark:border-slate-700">
+              <span class="text-gray-500">Total Billed</span>
+              <span class="font-medium tabular-nums">{{ fmtSGD(soaData.totals?.totalBilled) }}</span>
+            </div>
+            <div class="flex justify-between px-4 py-2.5 text-sm border-b border-gray-100 dark:border-slate-700">
+              <span class="text-green-700">Total Paid</span>
+              <span class="font-medium tabular-nums text-green-700">{{ fmtSGD(soaData.totals?.totalPaid) }}</span>
+            </div>
+            <div class="flex justify-between px-4 py-3 text-sm bg-gray-50 dark:bg-slate-700/40 rounded-b">
+              <span class="font-bold text-gray-800 dark:text-slate-200">Outstanding</span>
+              <span class="font-bold tabular-nums" :class="(soaData.totals?.balance||0)>0?'text-red-700':'text-gray-400'">{{ fmtSGD(soaData.totals?.balance) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Payroll ── -->
+    <div v-if="tab === 'payroll'" class="space-y-4">
+      <div class="flex flex-wrap gap-3 items-end">
+        <div class="input-group w-28">
+          <label class="input-label">Year</label>
+          <input v-model.number="payrollYear" type="number" class="input-field" min="2020" max="2099"/>
+        </div>
+        <div class="input-group w-36">
+          <label class="input-label">Month (optional)</label>
+          <select v-model="payrollMonth" class="input-field">
+            <option value="">All months</option>
+            <option v-for="(m,i) in MONTH_NAMES" :key="i" :value="String(i+1).padStart(2,'0')">{{ m }}</option>
+          </select>
+        </div>
+        <button @click="loadPayroll" :disabled="payrollLoading" class="btn-primary h-9 px-4">{{ payrollLoading ? 'Calculating…' : 'Calculate' }}</button>
+        <button v-if="payrollData" @click="downloadPdf(reportsApi.payrollPdf({ year: payrollYear, month: payrollMonth || undefined }), `payroll-${payrollYear}-${payrollMonth||'full'}.pdf`)" class="btn-secondary h-9 px-4">
+          <span class="material-icons" style="font-size:14px">picture_as_pdf</span> Download PDF
+        </button>
+        <button v-if="payrollData?.rows?.length" @click="exportCSV(payrollData.rows, `payroll-${payrollYear}.csv`)" class="btn-secondary h-9 px-4">Export CSV</button>
+      </div>
+      <div v-if="payrollData" class="card p-0">
+        <div class="card-header"><span class="card-title">Payroll Summary — {{ payrollYear }}{{ payrollMonth ? ' / ' + MONTH_NAMES[parseInt(payrollMonth)-1] : '' }}</span></div>
+        <table class="mat-table">
+          <thead>
+            <tr>
+              <th>Driver</th>
+              <th class="text-center">Days Worked</th>
+              <th class="text-right">Daily Rate</th>
+              <th class="text-right">Gross Pay</th>
+              <th class="text-right">CPF Emp (20%)</th>
+              <th class="text-right">CPF Employer (17%)</th>
+              <th class="text-right">Net Pay</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="!payrollData.rows?.length"><td colspan="7" class="text-center py-8 text-gray-400">No payroll data for this period.</td></tr>
+            <tr v-for="r in payrollData.rows" :key="r.driverId" :class="!r.dailyRate ? 'bg-amber-50/50 dark:bg-amber-900/10' : ''">
+              <td>
+                <div class="font-medium text-gray-900 dark:text-slate-100">{{ r.name }}</div>
+                <div v-if="!r.dailyRate" class="text-xs text-amber-600 mt-0.5">Set daily rate in Drivers</div>
+              </td>
+              <td class="text-center tabular-nums">{{ r.daysWorked }}</td>
+              <td class="text-right tabular-nums">{{ r.dailyRate ? fmtSGD(r.dailyRate) : '—' }}</td>
+              <td class="text-right tabular-nums font-medium">{{ fmtSGD(r.grossPay) }}</td>
+              <td class="text-right tabular-nums text-red-700">{{ fmtSGD(r.cpfEmployee) }}</td>
+              <td class="text-right tabular-nums text-gray-500">{{ fmtSGD(r.cpfEmployer) }}</td>
+              <td class="text-right tabular-nums font-bold text-gray-900 dark:text-slate-100">{{ fmtSGD(r.netPay) }}</td>
+            </tr>
+            <tr v-if="payrollData.rows?.length" class="bg-gray-50 dark:bg-slate-700/40 font-semibold text-sm border-t-2 border-gray-200 dark:border-slate-600">
+              <td colspan="3" class="text-right text-gray-600 dark:text-slate-400">Totals</td>
+              <td class="text-right tabular-nums">{{ fmtSGD(payrollTotals(payrollData.rows).grossPay) }}</td>
+              <td class="text-right tabular-nums text-red-700">{{ fmtSGD(payrollTotals(payrollData.rows).cpfEmployee) }}</td>
+              <td class="text-right tabular-nums text-gray-500">{{ fmtSGD(payrollTotals(payrollData.rows).cpfEmployer) }}</td>
+              <td class="text-right tabular-nums font-bold">{{ fmtSGD(payrollTotals(payrollData.rows).netPay) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Job Summary ── -->
+    <div v-if="tab === 'job-summary'" class="space-y-4">
+      <div class="card">
+        <div class="flex flex-wrap gap-3 items-end">
+          <div class="input-group w-36"><label class="input-label">From Date</label><input v-model="jobSummaryFrom" type="date" class="input-field"/></div>
+          <div class="input-group w-36"><label class="input-label">To Date</label><input v-model="jobSummaryTo" type="date" class="input-field"/></div>
+          <div class="input-group w-40">
+            <label class="input-label">Status</label>
+            <select v-model="jobSummaryStatus" class="input-field">
+              <option value="">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="in_transit">In Transit</option>
+              <option value="delivered">Delivered</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div class="input-group w-44">
+            <label class="input-label">Client</label>
+            <select v-model="jobSummaryClientId" class="input-field">
+              <option value="">All clients</option>
+              <option v-for="c in clientsList" :key="c.id" :value="c.id">{{ c.companyName }}</option>
+            </select>
+          </div>
+          <div class="input-group w-44">
+            <label class="input-label">Driver</label>
+            <select v-model="jobSummaryDriverId" class="input-field">
+              <option value="">All drivers</option>
+              <option v-for="d in driversList" :key="d.id" :value="d.id">{{ d.user?.name }}</option>
+            </select>
+          </div>
+          <button @click="loadJobSummary" class="btn-primary h-9 px-4">Search</button>
+          <button v-if="jobSummaryData.length" @click="exportCSV(jobSummaryData,'job-summary.csv')" class="btn-secondary h-9 px-4">Export CSV</button>
+        </div>
+      </div>
+      <div class="card p-0">
+        <div class="card-header"><span class="card-title">Job Summary</span><span class="text-xs text-gray-400">{{ jobSummaryData.length }} results</span></div>
+        <div class="overflow-x-auto">
+          <table class="mat-table">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Client</th>
+                <th>Driver</th>
+                <th>Vehicle</th>
+                <th class="text-center">From</th>
+                <th class="text-center">To</th>
+                <th class="text-center">Days</th>
+                <th>Status</th>
+                <th>Invoice</th>
+                <th class="text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="!jobSummaryData.length"><td colspan="10" class="text-center py-8 text-gray-400">No jobs found. Click Search to load results.</td></tr>
+              <tr v-for="j in jobSummaryData" :key="j.jobId">
+                <td class="max-w-[160px] truncate font-medium text-gray-900 dark:text-slate-100">{{ j.description }}</td>
+                <td class="text-gray-500 text-sm">{{ j.client }}</td>
+                <td class="text-gray-500 text-sm">{{ j.driver }}</td>
+                <td class="text-gray-500 text-sm">{{ j.vehicle }}</td>
+                <td class="text-center text-xs text-gray-400">{{ j.fromDate }}</td>
+                <td class="text-center text-xs text-gray-400">{{ j.toDate }}</td>
+                <td class="text-center tabular-nums text-gray-600">{{ j.days ?? '—' }}</td>
+                <td>
+                  <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+                    :class="j.status==='delivered'?'bg-green-50 text-green-700':j.status==='in_transit'?'bg-blue-50 text-blue-700':j.status==='cancelled'?'bg-red-50 text-red-700':'bg-gray-100 text-gray-500'">
+                    {{ j.status }}
+                  </span>
+                </td>
+                <td class="text-xs text-gray-500">{{ j.invoiceNo }}</td>
+                <td class="text-right tabular-nums font-medium">{{ j.amount > 0 ? fmtSGD(j.amount) : '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── A/R Action ── -->
+    <div v-if="tab === 'ar'" class="space-y-4">
+      <div class="flex justify-between items-center">
+        <p class="text-sm text-gray-500 dark:text-slate-400">All sent/overdue invoices requiring follow-up, sorted by days overdue.</p>
+        <button v-if="arData.length" @click="exportCSV(arData,'ar-actions.csv')" class="btn-secondary h-8 px-3 text-xs">Export CSV</button>
+      </div>
+      <div class="card p-0">
+        <div class="card-header"><span class="card-title">A/R Action List</span><span class="text-xs text-gray-400">{{ arData.length }} outstanding</span></div>
+        <div class="overflow-x-auto">
+          <table class="mat-table">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Contact</th>
+                <th>Phone</th>
+                <th>Invoice No</th>
+                <th class="text-right">Amount</th>
+                <th class="text-center">Invoice Date</th>
+                <th class="text-center">Due Date</th>
+                <th class="text-right">Days Overdue</th>
+                <th class="text-center">Last Payment</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="!arData.length"><td colspan="9" class="text-center py-8 text-gray-400">No outstanding invoices.</td></tr>
+              <tr v-for="r in arData" :key="r.invoiceId"
+                :class="r.daysOverdue > 0 ? 'bg-red-50/40 dark:bg-red-900/10' : r.daysOverdue > -8 ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''">
+                <td class="font-medium text-gray-900 dark:text-slate-100">{{ r.clientName }}</td>
+                <td class="text-gray-500 text-sm">{{ r.contactPerson }}</td>
+                <td class="text-gray-500 text-sm">{{ r.phone }}</td>
+                <td class="font-medium text-sm">{{ r.invoiceNo }}</td>
+                <td class="text-right tabular-nums font-semibold">{{ fmtSGD(r.amount) }}</td>
+                <td class="text-center text-xs text-gray-400">{{ fmtDate(r.invoiceDate) }}</td>
+                <td class="text-center text-xs" :class="r.daysOverdue > 0 ? 'text-red-700 font-medium' : 'text-gray-400'">{{ fmtDate(r.dueDate) }}</td>
+                <td class="text-right tabular-nums" :class="r.daysOverdue > 0 ? 'text-red-700 font-bold' : 'text-amber-700 font-medium'">
+                  {{ r.daysOverdue > 0 ? `${r.daysOverdue}d` : 'Due soon' }}
+                </td>
+                <td class="text-center text-xs text-gray-400">{{ r.lastPaymentDate ? fmtDate(r.lastPaymentDate) : '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Fleet Compliance ── -->
+    <div v-if="tab === 'fleet'" class="space-y-4">
+      <div class="flex gap-3 items-center justify-between">
+        <div class="flex gap-3">
+          <span class="text-xs px-2.5 py-1 rounded-full bg-red-50 text-red-700 font-semibold border border-red-200">Red = Expired</span>
+          <span class="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-semibold border border-amber-200">Amber = &lt;30 days</span>
+          <span class="text-xs px-2.5 py-1 rounded-full bg-green-50 text-green-700 font-semibold border border-green-200">Green = OK</span>
+        </div>
+        <div class="flex gap-2">
+          <button @click="downloadPdf(reportsApi.fleetCompliancePdf(), 'fleet-compliance.pdf')" class="btn-secondary h-8 px-3 text-xs">
+            <span class="material-icons" style="font-size:13px">picture_as_pdf</span> Download PDF
+          </button>
+          <button v-if="fleetData.length" @click="exportCSV(fleetData.map(v=>({plate:v.plateNumber,type:v.type,size:v.size,coeExpiry:v.coeExpiry||'',roadTaxExpiry:v.roadTaxExpiry||'',insuranceExpiry:v.insuranceExpiry||'',inspectionDue:v.inspectionDue||''})),'fleet-compliance.csv')" class="btn-secondary h-8 px-3 text-xs">Export CSV</button>
+        </div>
+      </div>
+      <div class="card p-0">
+        <div class="card-header"><span class="card-title">Fleet Compliance</span><span class="text-xs text-gray-400">{{ fleetData.length }} vehicles</span></div>
+        <div class="overflow-x-auto">
+          <table class="mat-table">
+            <thead>
+              <tr>
+                <th>Plate</th>
+                <th>Type</th>
+                <th class="text-center">COE Expiry</th>
+                <th class="text-center">Road Tax</th>
+                <th class="text-center">Insurance</th>
+                <th class="text-center">Inspection</th>
+                <th class="text-center">Overall</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="!fleetData.length"><td colspan="7" class="text-center py-8 text-gray-400">No vehicles found.</td></tr>
+              <tr v-for="v in fleetData" :key="v.id">
+                <td class="font-bold text-gray-900 dark:text-slate-100">{{ v.plateNumber }}</td>
+                <td class="text-gray-500 text-sm">{{ v.type }} {{ v.size }}</td>
+                <td class="text-center text-xs px-3 py-2" :class="fleetCellClass(v.coeExpiry)">{{ v.coeExpiry ? fmtDate(v.coeExpiry) : '—' }}</td>
+                <td class="text-center text-xs px-3 py-2" :class="fleetCellClass(v.roadTaxExpiry)">{{ v.roadTaxExpiry ? fmtDate(v.roadTaxExpiry) : '—' }}</td>
+                <td class="text-center text-xs px-3 py-2" :class="fleetCellClass(v.insuranceExpiry)">{{ v.insuranceExpiry ? fmtDate(v.insuranceExpiry) : '—' }}</td>
+                <td class="text-center text-xs px-3 py-2" :class="fleetCellClass(v.inspectionDue)">{{ v.inspectionDue ? fmtDate(v.inspectionDue) : '—' }}</td>
+                <td class="text-center">
+                  <span v-if="[v.coeExpiry,v.roadTaxExpiry,v.insuranceExpiry,v.inspectionDue].filter(Boolean).some(d=>Math.ceil((new Date(d)-new Date())/86400000)<0)"
+                    class="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-bold">Expired</span>
+                  <span v-else-if="[v.coeExpiry,v.roadTaxExpiry,v.insuranceExpiry,v.inspectionDue].filter(Boolean).some(d=>Math.ceil((new Date(d)-new Date())/86400000)<=30)"
+                    class="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold">Due Soon</span>
+                  <span v-else
+                    class="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-semibold">OK</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 

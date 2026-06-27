@@ -1,7 +1,7 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { jobsApi, jobAttendanceApi } from '../../api/index.js';
+import { jobsApi, jobAttendanceApi, invoicesApi } from '../../api/index.js';
 import { useAuthStore } from '../../stores/auth.js';
 import StatusBadge from '../../components/shared/StatusBadge.vue';
 
@@ -10,16 +10,22 @@ const router = useRouter();
 const auth = useAuthStore();
 const job = ref(null);
 const attendance = ref([]);
+const linkedInvoice = ref(null);
 const loading = ref(true);
 const updating = ref(false);
 const gpsError = ref('');
 const checkinLoading = ref('');
+const forceEndLoading = ref('');
+
+// Active attendance record for GPS ping loop
+let pingTimer = null;
+let activePingRecordId = null;
 
 function fmt(d) { return d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'; }
 function fmtShort(d) { return d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'; }
 function fmtTime(t) { return t ? new Date(t).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit' }) : '—'; }
+function fmtCoord(lat, lng) { return (lat && lng) ? `${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E` : null; }
 
-// Generate all dates between fromDate and toDate inclusive
 const jobDays = computed(() => {
   if (!job.value?.fromDate || !job.value?.toDate) return [];
   const days = [];
@@ -31,10 +37,13 @@ const jobDays = computed(() => {
   return days;
 });
 
-// Find attendance record for a given date
 function recordForDate(date) {
   return attendance.value.find(a => a.date === date) || null;
 }
+
+// Active record for today with no endTime
+const todayStr = new Date().toISOString().slice(0, 10);
+const activeRecord = computed(() => attendance.value.find(a => a.date === todayStr && a.status === 'started') || null);
 
 async function updateStatus(status) {
   updating.value = true;
@@ -45,7 +54,7 @@ async function updateStatus(status) {
 }
 
 function getGPS() {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     if (!navigator.geolocation) { resolve(null); return; }
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
@@ -55,19 +64,39 @@ function getGPS() {
   });
 }
 
+async function sendPing(recordId) {
+  const gps = await getGPS();
+  if (gps) {
+    try { await jobAttendanceApi.ping(recordId, { lat: gps.lat, lng: gps.lng }); } catch {}
+  }
+}
+
+function startPingLoop(recordId) {
+  stopPingLoop();
+  activePingRecordId = recordId;
+  sendPing(recordId);
+  pingTimer = setInterval(() => sendPing(recordId), 60_000);
+}
+
+function stopPingLoop() {
+  if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+  activePingRecordId = null;
+}
+
 async function checkIn(date) {
   checkinLoading.value = date;
   gpsError.value = '';
   try {
     const gps = await getGPS();
     if (!gps) gpsError.value = 'Location unavailable — checked in without GPS.';
-    await jobAttendanceApi.checkin({
+    const { data: record } = await jobAttendanceApi.checkin({
       jobId: job.value.id,
       date,
       startLat: gps?.lat || null,
       startLng: gps?.lng || null,
     });
     await loadAttendance();
+    if (date === todayStr) startPingLoop(record.id);
   } catch (e) {
     gpsError.value = e.response?.data?.message || 'Check-in failed.';
   } finally {
@@ -84,6 +113,7 @@ async function checkOut(record) {
       endLat: gps?.lat || null,
       endLng: gps?.lng || null,
     });
+    if (record.id === activePingRecordId) stopPingLoop();
     await loadAttendance();
   } catch (e) {
     gpsError.value = e.response?.data?.message || 'Check-out failed.';
@@ -98,12 +128,32 @@ async function loadAttendance() {
   catch { attendance.value = []; }
 }
 
+async function forceEnd(record) {
+  forceEndLoading.value = record.id;
+  try {
+    await jobAttendanceApi.forceEnd(record.id);
+    await loadAttendance();
+  } catch (e) {
+    alert(e.response?.data?.message || 'Failed to close session.');
+  } finally { forceEndLoading.value = ''; }
+}
+
 onMounted(async () => {
   try {
     job.value = (await jobsApi.get(route.params.id)).data;
     await loadAttendance();
+    // Load linked invoice if exists
+    try {
+      const allInvoices = (await invoicesApi.list()).data;
+      linkedInvoice.value = allInvoices.find(inv => inv.jobId === job.value.id) || null;
+    } catch {}
+    if (auth.isDriver && activeRecord.value) {
+      startPingLoop(activeRecord.value.id);
+    }
   } finally { loading.value = false; }
 });
+
+onUnmounted(() => stopPingLoop());
 </script>
 
 <template>
@@ -132,7 +182,7 @@ onMounted(async () => {
         <div class="section-label mb-1">Client</div>
         <div class="font-medium text-gray-900 dark:text-slate-100">{{ job.client?.companyName }}</div>
       </div>
-      <div class="grid grid-cols-2 gap-5">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div>
           <div class="section-label mb-1">From Date</div>
           <div class="text-gray-800 dark:text-slate-200">{{ fmt(job.fromDate) }}</div>
@@ -156,10 +206,56 @@ onMounted(async () => {
         </div>
         <div v-else class="text-gray-400">—</div>
       </div>
+
+      <!-- Route Destinations (shown when set) -->
+      <div v-if="job.pickupLat || job.deliveryLat" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div v-if="job.pickupLat" class="p-3 rounded-xl bg-blue-50 border border-blue-100">
+          <div class="text-xs font-semibold text-blue-700 mb-1 flex items-center gap-1">
+            <span class="w-4 h-4 rounded-full bg-blue-600 text-white text-[9px] font-bold inline-flex items-center justify-center">P</span>
+            Pickup Location
+          </div>
+          <div class="text-xs text-blue-800 font-mono">{{ job.pickupLat.toFixed(5) }}, {{ job.pickupLng.toFixed(5) }}</div>
+        </div>
+        <div v-if="job.deliveryLat" class="p-3 rounded-xl bg-green-50 border border-green-100">
+          <div class="text-xs font-semibold text-green-700 mb-1 flex items-center gap-1">
+            <span class="w-4 h-4 rounded-full bg-green-600 text-white text-[9px] font-bold inline-flex items-center justify-center">D</span>
+            Delivery Location
+          </div>
+          <div class="text-xs text-green-800 font-mono">{{ job.deliveryLat.toFixed(5) }}, {{ job.deliveryLng.toFixed(5) }}</div>
+        </div>
+      </div>
+
       <div v-if="job.notes">
         <div class="section-label mb-1">Notes</div>
         <div class="text-gray-700 dark:text-slate-300 whitespace-pre-line text-sm">{{ job.notes }}</div>
       </div>
+    </div>
+
+    <!-- Linked Invoice (admin/staff) -->
+    <div v-if="!auth.isDriver" class="card mb-5">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="material-icons text-blue-600" style="font-size:18px">receipt_long</span>
+          <span class="card-title">Invoice</span>
+        </div>
+        <RouterLink v-if="!linkedInvoice" :to="`/invoices/new?jobId=${job.id}`" class="btn-secondary text-sm">
+          Create Invoice
+        </RouterLink>
+      </div>
+      <div v-if="linkedInvoice" class="mt-3 flex items-center justify-between">
+        <div>
+          <RouterLink :to="`/invoices/${linkedInvoice.id}`" class="font-semibold text-blue-600 hover:underline">{{ linkedInvoice.invoiceNo }}</RouterLink>
+          <span class="ml-3 text-sm text-gray-500">S${{ parseFloat(linkedInvoice.totalAmount).toFixed(2) }}</span>
+        </div>
+        <StatusBadge :status="linkedInvoice.status" />
+      </div>
+      <div v-else class="mt-2 text-sm text-gray-400 italic">No invoice linked yet.</div>
+    </div>
+
+    <!-- GPS live ping indicator for driver -->
+    <div v-if="auth.isDriver && activeRecord" class="mb-4 p-3 rounded-xl bg-green-50 border border-green-100 flex items-center gap-2 text-sm text-green-700">
+      <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0"></span>
+      Live location being sent every 60 seconds. Keep this page open while on shift.
     </div>
 
     <!-- ── Daily Attendance ── -->
@@ -184,46 +280,60 @@ onMounted(async () => {
       <!-- Driver view: interactive day cards -->
       <div v-if="auth.isDriver" class="divide-y divide-gray-100 dark:divide-slate-700/40">
         <div v-if="!jobDays.length" class="py-8 text-center text-gray-400 text-sm">No days in this job.</div>
-        <div v-for="date in jobDays" :key="date" class="px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <div class="font-medium text-gray-800 dark:text-slate-200 text-sm">{{ fmtShort(date) }}</div>
-            <div v-if="recordForDate(date)" class="text-xs text-gray-400 mt-0.5">
-              <span v-if="recordForDate(date).startTime">In: {{ fmtTime(recordForDate(date).startTime) }}</span>
-              <span v-if="recordForDate(date).startLat" class="ml-1 text-green-600">📍</span>
-              <span v-if="recordForDate(date).endTime" class="ml-2">Out: {{ fmtTime(recordForDate(date).endTime) }}</span>
-              <span v-if="recordForDate(date).endLat" class="ml-1 text-green-600">📍</span>
+        <div v-for="date in jobDays" :key="date" class="px-5 py-4">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <div class="flex-1 min-w-0">
+              <div class="font-medium text-gray-800 dark:text-slate-200 text-sm">{{ fmtShort(date) }}</div>
+              <div v-if="recordForDate(date)" class="text-xs text-gray-400 mt-0.5">
+                <span v-if="recordForDate(date).startTime">In: {{ fmtTime(recordForDate(date).startTime) }}</span>
+                <span v-if="recordForDate(date).startLat" class="ml-1 text-green-600 text-[10px]">{{ fmtCoord(recordForDate(date).startLat, recordForDate(date).startLng) }}</span>
+                <span v-if="recordForDate(date).endTime" class="ml-2">Out: {{ fmtTime(recordForDate(date).endTime) }}</span>
+                <span v-if="recordForDate(date).endLat" class="ml-1 text-blue-600 text-[10px]">{{ fmtCoord(recordForDate(date).endLat, recordForDate(date).endLng) }}</span>
+              </div>
+
+              <!-- Show assigned destination when starting/on active day -->
+              <div v-if="date === todayStr && !recordForDate(date) && (job.pickupLat || job.deliveryLat)" class="mt-1.5 text-xs text-blue-600">
+                <span v-if="job.pickupLat">Pickup at {{ job.pickupLat.toFixed(4) }}, {{ job.pickupLng.toFixed(4) }}</span>
+              </div>
+              <div v-if="date === todayStr && recordForDate(date)?.status === 'started' && job.deliveryLat" class="mt-1.5 text-xs text-green-600">
+                Delivery at {{ job.deliveryLat.toFixed(4) }}, {{ job.deliveryLng.toFixed(4) }}
+              </div>
             </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <!-- Not checked in -->
-            <template v-if="!recordForDate(date)">
-              <button
-                @click="checkIn(date)"
-                :disabled="checkinLoading === date"
-                class="btn-secondary text-sm h-8 px-3 text-blue-600 border-blue-200 hover:bg-blue-50">
-                {{ checkinLoading === date ? 'Locating…' : 'Start Day' }}
-              </button>
-            </template>
-            <!-- Started, not checked out -->
-            <template v-else-if="recordForDate(date).status === 'started'">
-              <span class="inline-flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-100">
-                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                In progress
-              </span>
-              <button
-                @click="checkOut(recordForDate(date))"
-                :disabled="checkinLoading === date + '-out'"
-                class="btn-primary text-sm h-8 px-3">
-                {{ checkinLoading === date + '-out' ? 'Saving…' : 'End Day' }}
-              </button>
-            </template>
-            <!-- Completed -->
-            <template v-else>
-              <span class="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-1 rounded-full border border-green-100">
-                <span class="material-icons" style="font-size:13px">check_circle</span>
-                Done
-              </span>
-            </template>
+
+            <div class="flex items-center gap-2">
+              <!-- Not checked in -->
+              <template v-if="!recordForDate(date)">
+                <button
+                  v-if="date === todayStr"
+                  @click="checkIn(date)"
+                  :disabled="checkinLoading === date"
+                  class="btn-secondary text-sm h-8 px-3 text-blue-600 border-blue-200 hover:bg-blue-50">
+                  {{ checkinLoading === date ? 'Locating…' : 'Start Day' }}
+                </button>
+                <span v-else-if="date > todayStr" class="text-xs text-gray-300">Upcoming</span>
+                <span v-else class="text-xs text-gray-300 italic">Not checked in</span>
+              </template>
+              <!-- Started, not checked out -->
+              <template v-else-if="recordForDate(date).status === 'started'">
+                <span class="inline-flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-100">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                  In progress
+                </span>
+                <button
+                  @click="checkOut(recordForDate(date))"
+                  :disabled="checkinLoading === date + '-out'"
+                  class="btn-primary text-sm h-8 px-3">
+                  {{ checkinLoading === date + '-out' ? 'Saving…' : 'End Day' }}
+                </button>
+              </template>
+              <!-- Completed -->
+              <template v-else>
+                <span class="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-1 rounded-full border border-green-100">
+                  <span class="material-icons" style="font-size:13px">check_circle</span>
+                  Done
+                </span>
+              </template>
+            </div>
           </div>
         </div>
       </div>
@@ -236,9 +346,9 @@ onMounted(async () => {
               <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
               <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Driver</th>
               <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Start</th>
-              <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Start Location</th>
+              <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Start GPS</th>
               <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">End</th>
-              <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">End Location</th>
+              <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">End GPS</th>
               <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
             </tr>
           </thead>
@@ -250,16 +360,30 @@ onMounted(async () => {
               <td class="px-5 py-3 font-medium text-gray-800">{{ fmtShort(a.date) }}</td>
               <td class="px-5 py-3 text-gray-600">{{ a.driver?.user?.name || '—' }}</td>
               <td class="px-5 py-3 text-gray-500 tabular-nums">{{ fmtTime(a.startTime) }}</td>
-              <td class="px-5 py-3 text-gray-400 text-xs">
-                <span v-if="a.startLat">{{ a.startLat?.toFixed(4) }}°N, {{ a.startLng?.toFixed(4) }}°E</span>
+              <td class="px-5 py-3 text-gray-400 text-xs font-mono">
+                <span v-if="a.startLat">{{ a.startLat.toFixed(4) }}, {{ a.startLng.toFixed(4) }}</span>
                 <span v-else class="text-gray-300">—</span>
               </td>
               <td class="px-5 py-3 text-gray-500 tabular-nums">{{ fmtTime(a.endTime) }}</td>
-              <td class="px-5 py-3 text-gray-400 text-xs">
-                <span v-if="a.endLat">{{ a.endLat?.toFixed(4) }}°N, {{ a.endLng?.toFixed(4) }}°E</span>
+              <td class="px-5 py-3 text-gray-400 text-xs font-mono">
+                <span v-if="a.endLat">{{ a.endLat.toFixed(4) }}, {{ a.endLng.toFixed(4) }}</span>
                 <span v-else class="text-gray-300">—</span>
               </td>
-              <td class="px-5 py-3"><StatusBadge :status="a.status" /></td>
+              <td class="px-5 py-3">
+                <div class="flex items-center gap-2">
+                  <StatusBadge :status="a.status" />
+                  <span v-if="a.lastPingAt" class="text-[10px] text-green-600 flex items-center gap-0.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                    Live {{ fmtTime(a.lastPingAt) }}
+                  </span>
+                  <button v-if="a.status === 'started' && !auth.isDriver"
+                    @click="forceEnd(a)"
+                    :disabled="forceEndLoading === a.id"
+                    class="text-xs px-2 h-6 rounded border border-red-200 text-red-600 hover:bg-red-50 ml-1">
+                    {{ forceEndLoading === a.id ? '…' : 'Close' }}
+                  </button>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>

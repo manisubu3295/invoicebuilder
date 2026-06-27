@@ -87,7 +87,7 @@ async function toggleActive(user) {
     </div>
 
     <!-- Role info -->
-    <div class="grid grid-cols-3 gap-4 mb-5">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
       <div class="card-outlined p-4">
         <div class="flex items-center gap-2 mb-2"><span class="badge-admin">Admin</span></div>
         <ul class="text-xs text-gray-500 space-y-1 list-disc list-inside">

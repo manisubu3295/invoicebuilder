@@ -106,13 +106,13 @@ body {
 
   /* ─── Cards ─── */
   .card {
-    @apply bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-6;
+    @apply bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-4 sm:p-6;
   }
   .card-outlined {
-    @apply bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-6;
+    @apply bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-4 sm:p-6;
   }
   .card-header {
-    @apply px-6 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between;
+    @apply px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between flex-wrap gap-2;
   }
   .card-title {
     @apply text-sm font-semibold text-gray-900 dark:text-slate-100;
@@ -126,10 +126,10 @@ body {
     @apply max-w-7xl mx-auto;
   }
   .page-header {
-    @apply flex items-start justify-between mb-6 gap-4;
+    @apply flex items-start justify-between mb-4 sm:mb-6 gap-3 flex-wrap;
   }
   .page-title {
-    @apply text-xl font-semibold text-gray-900 dark:text-slate-100;
+    @apply text-lg sm:text-xl font-semibold text-gray-900 dark:text-slate-100;
   }
   .page-subtitle {
     @apply text-sm text-gray-500 dark:text-slate-400 mt-0.5;
@@ -139,17 +139,18 @@ body {
   .mat-table {
     @apply w-full text-sm;
     border-collapse: collapse;
+    min-width: 480px; /* prevent columns from collapsing too small */
   }
   .mat-table thead {
     @apply border-b border-gray-200 dark:border-slate-700;
   }
   .mat-table th {
-    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap
+    @apply px-3 sm:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap
            bg-gray-50 dark:bg-slate-800/80
            text-gray-500 dark:text-slate-400;
   }
   .mat-table td {
-    @apply px-4 py-3.5 text-sm text-gray-800 dark:text-slate-200;
+    @apply px-3 sm:px-4 py-3 sm:py-3.5 text-sm text-gray-800 dark:text-slate-200;
     border-bottom: 1px solid theme('colors.gray.100');
   }
   .dark .mat-table td {
@@ -162,10 +163,16 @@ body {
     border-bottom: none;
   }
 
+  /* ─── Responsive table scroll container ─── */
+  .table-wrap {
+    @apply overflow-x-auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   /* ─── Filter / search toolbar ─── */
   .filter-bar {
     @apply bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700
-           flex flex-wrap gap-4 items-end p-4 mb-5;
+           flex flex-wrap gap-3 items-end p-3 sm:p-4 mb-4 sm:mb-5;
   }
   .search-input {
     @apply flex items-center gap-2 h-9 px-3 text-sm
@@ -251,4 +258,25 @@ body {
     @apply step-circle bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-500
            border border-gray-200 dark:border-slate-600;
   }
+}
+
+/* ═══════════════════════════════════════════
+   MOBILE RESPONSIVE OVERRIDES
+═══════════════════════════════════════════ */
+
+/* All .mat-table containers get horizontal scroll on mobile */
+@media (max-width: 767px) {
+  /* Cards that wrap tables should scroll horizontally */
+  .card.p-0,
+  .card.overflow-hidden,
+  [class~="card"][class~="p-0"] {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Fix h-screen for mobile browsers with address bar */
+.h-dvh { height: 100dvh; }
+@supports not (height: 100dvh) {
+  .h-dvh { height: 100vh; }
 }

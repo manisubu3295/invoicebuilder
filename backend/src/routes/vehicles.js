@@ -16,13 +16,13 @@ router.get('/', async (req, res) => {
 
 router.post('/', rbac('admin'), async (req, res) => {
   try {
-    const { plateNumber, type, size, notes } = req.body;
+    const { plateNumber, type, size, notes, coeExpiry, roadTaxExpiry, insuranceExpiry, inspectionDue, mileage } = req.body;
     if (!plateNumber || !type) return res.status(400).json({ message: 'plateNumber and type required' });
 
     const existing = await Vehicle.findOne({ where: { plateNumber: plateNumber.toUpperCase() } });
     if (existing) return res.status(409).json({ message: 'Vehicle already exists' });
 
-    const vehicle = await Vehicle.create({ plateNumber: plateNumber.toUpperCase(), type, size, notes });
+    const vehicle = await Vehicle.create({ plateNumber: plateNumber.toUpperCase(), type, size, notes, coeExpiry: coeExpiry || null, roadTaxExpiry: roadTaxExpiry || null, insuranceExpiry: insuranceExpiry || null, inspectionDue: inspectionDue || null, mileage: mileage || null });
     res.status(201).json(vehicle);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -33,8 +33,8 @@ router.put('/:id', rbac('admin'), async (req, res) => {
   try {
     const vehicle = await Vehicle.findByPk(req.params.id);
     if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
-    const { plateNumber, type, size, status, notes } = req.body;
-    await vehicle.update({ plateNumber, type, size, status, notes });
+    const { plateNumber, type, size, status, notes, coeExpiry, roadTaxExpiry, insuranceExpiry, inspectionDue, mileage } = req.body;
+    await vehicle.update({ plateNumber, type, size, status, notes, coeExpiry: coeExpiry || null, roadTaxExpiry: roadTaxExpiry || null, insuranceExpiry: insuranceExpiry || null, inspectionDue: inspectionDue || null, mileage: mileage || null });
     res.json(vehicle);
   } catch (err) {
     res.status(500).json({ message: err.message });

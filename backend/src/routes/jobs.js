@@ -49,11 +49,13 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', rbac('admin', 'staff'), async (req, res) => {
   try {
-    const { clientId, vehicleId, driverId, description, fromDate, toDate, notes } = req.body;
+    const { clientId, vehicleId, driverId, description, fromDate, toDate, notes,
+      pickupLat, pickupLng, pickupAddress, deliveryLat, deliveryLng, deliveryAddress } = req.body;
     if (!clientId || !description || !fromDate || !toDate) {
       return res.status(400).json({ message: 'clientId, description, fromDate, toDate required' });
     }
-    const job = await Job.create({ clientId, vehicleId, driverId, description, fromDate, toDate, notes });
+    const job = await Job.create({ clientId, vehicleId, driverId, description, fromDate, toDate, notes,
+      pickupLat, pickupLng, pickupAddress, deliveryLat, deliveryLng, deliveryAddress });
     res.status(201).json(job);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -64,8 +66,10 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
   try {
     const job = await Job.findByPk(req.params.id);
     if (!job) return res.status(404).json({ message: 'Job not found' });
-    const { clientId, vehicleId, driverId, description, fromDate, toDate, notes } = req.body;
-    await job.update({ clientId, vehicleId, driverId, description, fromDate, toDate, notes });
+    const { clientId, vehicleId, driverId, description, fromDate, toDate, notes,
+      pickupLat, pickupLng, pickupAddress, deliveryLat, deliveryLng, deliveryAddress } = req.body;
+    await job.update({ clientId, vehicleId, driverId, description, fromDate, toDate, notes,
+      pickupLat, pickupLng, pickupAddress, deliveryLat, deliveryLng, deliveryAddress });
     res.json(job);
   } catch (err) {
     res.status(500).json({ message: err.message });

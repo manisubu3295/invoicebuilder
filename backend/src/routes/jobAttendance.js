@@ -38,14 +38,13 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/job-attendance/active — today's active sessions with GPS (admin/staff only)
+// GET /api/job-attendance/active — today's active sessions (admin/staff only)
 router.get('/active', rbac('admin', 'staff'), async (req, res) => {
   try {
     const today = new Date().toISOString().slice(0, 10);
     const records = await JobAttendance.findAll({
       where: {
         date: today,
-        startLat: { [Op.ne]: null },
         endTime: null,
       },
       include: [
@@ -53,12 +52,33 @@ router.get('/active', rbac('admin', 'staff'), async (req, res) => {
         {
           model: Job,
           as: 'job',
-          attributes: ['id', 'description'],
+          attributes: ['id', 'description', 'pickupLat', 'pickupLng', 'pickupAddress', 'deliveryLat', 'deliveryLng', 'deliveryAddress'],
           include: [{ model: Vehicle, as: 'vehicle', attributes: ['plateNumber', 'type'] }],
         },
       ],
     });
     res.json(records);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// PUT /api/job-attendance/:id/ping — driver sends live GPS position
+router.put('/:id/ping', async (req, res) => {
+  try {
+    const record = await JobAttendance.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ message: 'Attendance record not found' });
+
+    if (req.user.role === 'driver') {
+      const driver = await Driver.findOne({ where: { userId: req.user.id } });
+      if (!driver || record.driverId !== driver.id) {
+        return res.status(403).json({ message: 'Not authorised' });
+      }
+    }
+
+    const { lat, lng } = req.body;
+    await record.update({ currentLat: lat, currentLng: lng, lastPingAt: new Date() });
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -130,6 +150,20 @@ router.put('/:id/end', async (req, res) => {
       notes: notes || record.notes,
     });
 
+    const full = await JobAttendance.findByPk(record.id, { include: [driverInclude] });
+    res.json(full);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// PUT /api/job-attendance/:id/force-end — admin closes an open session
+router.put('/:id/force-end', rbac('admin', 'staff'), async (req, res) => {
+  try {
+    const record = await JobAttendance.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ message: 'Attendance record not found' });
+    if (record.endTime) return res.status(400).json({ message: 'Already checked out' });
+    await record.update({ endTime: new Date(), status: 'completed', notes: (record.notes ? record.notes + ' ' : '') + '[Closed by admin]' });
     const full = await JobAttendance.findByPk(record.id, { include: [driverInclude] });
     res.json(full);
   } catch (err) {

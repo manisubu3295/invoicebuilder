@@ -130,5 +130,47 @@ const chartOptions = {
       </table>
     </div>
 
+    <!-- Compliance alerts row -->
+    <div class="grid lg:grid-cols-2 gap-5">
+      <!-- Expiry alerts -->
+      <div v-if="stats?.expiryAlerts?.length" class="card p-0">
+        <div class="card-header">
+          <span class="card-title flex items-center gap-2">
+            <span class="material-icons text-amber-500" style="font-size:18px">warning</span>
+            Compliance Alerts
+            <span class="ml-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold">{{ stats.expiryAlerts.length }}</span>
+          </span>
+          <RouterLink to="/vehicles" class="btn-text text-xs px-2 h-7">Manage Fleet</RouterLink>
+        </div>
+        <div class="divide-y divide-gray-100 dark:divide-slate-700/40">
+          <div v-for="a in stats.expiryAlerts" :key="a.plate+a.label+a.type" class="px-4 py-2.5 flex items-center justify-between text-sm">
+            <div>
+              <span class="font-medium text-gray-800 dark:text-slate-200">
+                <span v-if="a.type === 'vehicle'">🚛 {{ a.plate }}</span>
+                <span v-else>👤 {{ a.name }}</span>
+              </span>
+              <span class="text-gray-400 ml-2 text-xs">{{ a.label }}</span>
+            </div>
+            <span :class="a.expired ? 'text-red-600 font-bold' : a.days <= 14 ? 'text-red-500 font-semibold' : 'text-amber-600'" class="text-xs">
+              {{ a.expired ? 'EXPIRED' : a.days === 0 ? 'TODAY' : a.days + 'd left' }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pending expense approvals -->
+      <div v-if="stats?.pendingExpenses > 0" class="card">
+        <div class="flex items-center justify-between mb-3">
+          <span class="card-title flex items-center gap-2">
+            <span class="material-icons text-indigo-500" style="font-size:18px">pending_actions</span>
+            Expenses Awaiting Approval
+          </span>
+          <span class="text-lg font-bold text-indigo-600">{{ stats.pendingExpenses }}</span>
+        </div>
+        <p class="text-sm text-gray-500 mb-3">Driver expense submissions pending your review.</p>
+        <RouterLink to="/expenses" class="btn-primary text-sm w-full text-center block">Review Expenses</RouterLink>
+      </div>
+    </div>
+
   </div>
 </template>
