@@ -1,0 +1,210 @@
+const router = require('express').Router();
+const fs = require('fs');
+const { Quotation, QuotationItem, Invoice, InvoiceItem, Client, CompanySettings } = require('../models');
+const auth = require('../middleware/auth');
+const rbac = require('../middleware/rbac');
+const { generateQuotationNumber, generateInvoiceNumber } = require('../services/invoiceNumber');
+const { generateQuotationPDF } = require('../services/pdfService');
+const { sendQuotationEmail } = require('../services/emailService');
+
+router.use(auth);
+
+router.get('/', async (req, res) => {
+  try {
+    const quotations = await Quotation.findAll({
+      include: [
+        { model: Client, as: 'client', attributes: ['id', 'companyName', 'clientCode'] },
+        { model: QuotationItem, as: 'items' },
+      ],
+      order: [['createdAt', 'DESC']],
+    });
+    res.json(quotations);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/:id', async (req, res) => {
+  try {
+    const q = await Quotation.findByPk(req.params.id, {
+      include: [{ model: Client, as: 'client' }, { model: QuotationItem, as: 'items' }],
+    });
+    if (!q) return res.status(404).json({ message: 'Quotation not found' });
+    res.json(q);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/', rbac('admin', 'staff'), async (req, res) => {
+  try {
+    const { clientId, date, validUntil, items, notes } = req.body;
+    if (!clientId || !date || !items?.length) {
+      return res.status(400).json({ message: 'clientId, date, and items are required' });
+    }
+
+    const quotationNo = await generateQuotationNumber(clientId);
+    const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
+
+    const quotation = await Quotation.create({ quotationNo, clientId, date, validUntil: validUntil || null, notes, totalAmount });
+    const qItems = items.map((item, idx) => ({
+      quotationId: quotation.id,
+      sno: item.sno || idx + 1,
+      jobDescription: item.jobDescription,
+      itemType: item.itemType || 'service',
+      fromDate: item.fromDate,
+      toDate: item.toDate,
+      rate: item.rate,
+      rateType: item.rateType || 'per_week',
+      deliveryDate: item.deliveryDate,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalAmount: item.totalAmount,
+    }));
+    await QuotationItem.bulkCreate(qItems);
+
+    const full = await Quotation.findByPk(quotation.id, {
+      include: [{ model: Client, as: 'client' }, { model: QuotationItem, as: 'items' }],
+    });
+    res.status(201).json(full);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
+  try {
+    const q = await Quotation.findByPk(req.params.id);
+    if (!q) return res.status(404).json({ message: 'Quotation not found' });
+
+    const { date, validUntil, notes, status, items } = req.body;
+    if (items) {
+      await QuotationItem.destroy({ where: { quotationId: q.id } });
+      const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
+      const qItems = items.map((item, idx) => ({
+        quotationId: q.id,
+        sno: item.sno || idx + 1,
+        jobDescription: item.jobDescription,
+        itemType: item.itemType || 'service',
+        fromDate: item.fromDate,
+        toDate: item.toDate,
+        rate: item.rate,
+        rateType: item.rateType || 'per_week',
+        deliveryDate: item.deliveryDate,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalAmount: item.totalAmount,
+      }));
+      await QuotationItem.bulkCreate(qItems);
+      await q.update({ date, validUntil: validUntil || null, notes, status, totalAmount });
+    } else {
+      await q.update({ date, validUntil: validUntil || null, notes, status });
+    }
+
+    const full = await Quotation.findByPk(q.id, {
+      include: [{ model: Client, as: 'client' }, { model: QuotationItem, as: 'items' }],
+    });
+    res.json(full);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/:id/pdf', async (req, res) => {
+  try {
+    const q = await Quotation.findByPk(req.params.id, {
+      include: [{ model: Client, as: 'client' }, { model: QuotationItem, as: 'items' }],
+    });
+    if (!q) return res.status(404).json({ message: 'Quotation not found' });
+
+    const settings = await CompanySettings.findOne() || {};
+    const pdfPath = await generateQuotationPDF(q, q.client, q.items, settings);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Quotation-${q.quotationNo.replace(/\//g, '-')}.pdf"`);
+    fs.createReadStream(pdfPath).pipe(res);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/:id/send-email', rbac('admin', 'staff'), async (req, res) => {
+  try {
+    const q = await Quotation.findByPk(req.params.id, {
+      include: [{ model: Client, as: 'client' }, { model: QuotationItem, as: 'items' }],
+    });
+    if (!q) return res.status(404).json({ message: 'Quotation not found' });
+    if (!q.client.email) return res.status(400).json({ message: 'Client has no email address' });
+
+    const settings = await CompanySettings.findOne() || {};
+    const pdfPath = await generateQuotationPDF(q, q.client, q.items, settings);
+    await sendQuotationEmail({
+      to: q.client.email,
+      clientName: q.client.contactPerson || q.client.companyName,
+      quotationNo: q.quotationNo,
+      pdfPath,
+      settings: settings?.dataValues || settings || {},
+    });
+
+    await q.update({ status: 'sent' });
+    res.json({ message: 'Quotation emailed successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.delete('/:id', rbac('admin', 'staff'), async (req, res) => {
+  try {
+    const q = await Quotation.findByPk(req.params.id);
+    if (!q) return res.status(404).json({ message: 'Quotation not found' });
+    if (q.status !== 'draft') {
+      return res.status(400).json({ message: 'Only draft quotations can be deleted' });
+    }
+    await QuotationItem.destroy({ where: { quotationId: q.id } });
+    await q.destroy();
+    res.json({ message: 'Quotation deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/:id/convert-to-invoice', rbac('admin', 'staff'), async (req, res) => {
+  try {
+    const q = await Quotation.findByPk(req.params.id, {
+      include: [{ model: Client, as: 'client' }, { model: QuotationItem, as: 'items' }],
+    });
+    if (!q) return res.status(404).json({ message: 'Quotation not found' });
+    if (q.status === 'converted') return res.status(400).json({ message: 'Quotation already converted' });
+
+    const invoiceNo = await generateInvoiceNumber(q.clientId);
+    const invoice = await Invoice.create({
+      invoiceNo, quotationId: q.id, clientId: q.clientId,
+      date: new Date(), totalAmount: q.totalAmount, status: 'draft',
+    });
+
+    const invoiceItems = q.items.map(item => ({
+      invoiceId: invoice.id,
+      sno: item.sno,
+      jobDescription: item.jobDescription,
+      itemType: item.itemType || 'service',
+      fromDate: item.fromDate,
+      toDate: item.toDate,
+      rate: item.rate,
+      rateType: item.rateType,
+      deliveryDate: item.deliveryDate,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalAmount: item.totalAmount,
+    }));
+    await InvoiceItem.bulkCreate(invoiceItems);
+    await q.update({ status: 'converted' });
+
+    const full = await Invoice.findByPk(invoice.id, {
+      include: [{ model: Client, as: 'client' }, { model: InvoiceItem, as: 'items' }],
+    });
+    res.status(201).json(full);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+module.exports = router;
