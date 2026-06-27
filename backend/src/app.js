@@ -73,7 +73,7 @@ if (isProd) {
   const distPath = path.join(__dirname, '../../frontend/dist');
   app.use(express.static(distPath, { maxAge: '7d', etag: true }));
   // SPA fallback — all non-API routes serve index.html
-  app.get('*', (req, res) => {
+  app.get('/{*path}', (req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
