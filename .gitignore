@@ -13,9 +13,17 @@ node_modules/
 
 # Logs
 *.log
+*.txt
 npm-debug.log*
 backend.log
 frontend.log
+backend-log.txt
+backend-err.txt
+frontend-log.txt
+frontend-err.txt
+
+# Claude Code settings
+.claude/
 
 # Build output
 dist/

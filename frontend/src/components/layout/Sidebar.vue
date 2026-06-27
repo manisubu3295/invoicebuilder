@@ -39,6 +39,7 @@ const navItems = computed(() => {
       { path: '/item-catalog', label: 'Item Catalog',  icon: 'category' },
       { path: '/settings',     label: 'Settings',     icon: 'settings' },
     ] : []),
+    { path: '/guide', label: 'Help / Guide', icon: 'help_outline', divider: true },
   ];
 });
 
@@ -64,18 +65,19 @@ function isActive(path) {
 
     <!-- Nav -->
     <nav class="flex-1 py-3 px-2 overflow-y-auto space-y-0.5">
-      <RouterLink
-        v-for="item in navItems"
-        :key="item.path"
-        :to="item.path"
-        class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
-        :class="isActive(item.path)
-          ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400 font-medium'
-          : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-slate-100'"
-      >
-        <span class="material-icons shrink-0 select-none" style="font-size:18px">{{ item.icon }}</span>
-        <span class="truncate">{{ item.label }}</span>
-      </RouterLink>
+      <template v-for="item in navItems" :key="item.path">
+        <div v-if="item.divider" class="my-2 border-t border-gray-100 dark:border-slate-700/60"></div>
+        <RouterLink
+          :to="item.path"
+          class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
+          :class="isActive(item.path)
+            ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400 font-medium'
+            : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-slate-100'"
+        >
+          <span class="material-icons shrink-0 select-none" style="font-size:18px">{{ item.icon }}</span>
+          <span class="truncate">{{ item.label }}</span>
+        </RouterLink>
+      </template>
     </nav>
 
     <!-- User chip -->

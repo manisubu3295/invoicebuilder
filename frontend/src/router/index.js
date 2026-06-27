@@ -35,6 +35,7 @@ const routes = [
       { path: 'delivery-log/:id/edit', component: () => import('../views/deliveries/DeliveryForm.vue') },
       { path: 'delivery-log/invoice', component: () => import('../views/deliveries/InvoiceFromDeliveries.vue'), meta: { roles: ['admin', 'staff'] } },
       { path: 'item-catalog', component: () => import('../views/itemCatalog/ItemCatalogView.vue'), meta: { roles: ['admin'] } },
+      { path: 'guide', component: () => import('../views/guide/HelpGuide.vue') },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },
