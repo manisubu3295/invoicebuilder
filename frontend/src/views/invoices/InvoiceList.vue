@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { ref, computed, onMounted } from 'vue';
 import { invoicesApi } from '../../api/index.js';
 import StatusBadge from '../../components/shared/StatusBadge.vue';
@@ -7,6 +7,7 @@ const invoices = ref([]);
 const loading = ref(true);
 const search = ref('');
 const statusFilter = ref('');
+const showMonthly = ref(true);
 
 const filtered = computed(() => invoices.value.filter(inv => {
   const s = search.value.toLowerCase();
@@ -15,7 +16,31 @@ const filtered = computed(() => invoices.value.filter(inv => {
   return matchS && matchSt;
 }));
 
-function fmt(d) { return d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'; }
+const monthlySummary = computed(() => {
+  const map = {};
+  for (const inv of invoices.value) {
+    const d = inv.date ? new Date(inv.date) : null;
+    if (!d || isNaN(d)) continue;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (!map[key]) map[key] = { month: key, count: 0, total: 0, paid: 0 };
+    map[key].count++;
+    map[key].total += parseFloat(inv.totalAmount || 0);
+    if (inv.status === 'paid') map[key].paid += parseFloat(inv.totalAmount || 0);
+  }
+  return Object.values(map).sort((a, b) => b.month.localeCompare(a.month));
+});
+
+const summaryTotals = computed(() => ({
+  count: monthlySummary.value.reduce((s, r) => s + r.count, 0),
+  total: monthlySummary.value.reduce((s, r) => s + r.total, 0),
+  paid:  monthlySummary.value.reduce((s, r) => s + r.paid,  0),
+}));
+
+function fmtMonth(key) {
+  const [y, m] = key.split('-');
+  return new Date(+y, +m - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+}
+function fmtDate(d) { return d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'; }
 function fmtSGD(v) { return `S$${parseFloat(v || 0).toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
 
 async function downloadPdf(id, invoiceNo) {
@@ -47,6 +72,64 @@ onMounted(async () => {
       </RouterLink>
     </div>
 
+    <!-- Monthly Summary -->
+    <div v-if="!loading && invoices.length" class="card p-0 mb-4">
+      <div class="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 dark:border-slate-700/60">
+        <div class="flex items-center gap-2">
+          <span class="material-icons text-blue-600" style="font-size:18px">calendar_month</span>
+          <span class="card-title">Monthly Summary</span>
+        </div>
+        <button @click="showMonthly = !showMonthly" class="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+          <span class="material-icons" style="font-size:14px">{{ showMonthly ? 'expand_less' : 'expand_more' }}</span>
+          {{ showMonthly ? 'Hide' : 'Show' }}
+        </button>
+      </div>
+      <div v-if="showMonthly" class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-gray-50 dark:bg-slate-700/40">
+              <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Month</th>
+              <th class="px-5 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Invoices</th>
+              <th class="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Billed</th>
+              <th class="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Paid</th>
+              <th class="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Outstanding</th>
+              <th class="px-5 py-2.5 w-28"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in monthlySummary" :key="row.month"
+              class="border-t border-gray-100 dark:border-slate-700/40 hover:bg-gray-50/50 dark:hover:bg-slate-700/20">
+              <td class="px-5 py-3 font-medium text-gray-800 dark:text-slate-200">{{ fmtMonth(row.month) }}</td>
+              <td class="px-5 py-3 text-center text-gray-600 dark:text-slate-400">{{ row.count }}</td>
+              <td class="px-5 py-3 text-right font-semibold tabular-nums text-gray-800 dark:text-slate-200">{{ fmtSGD(row.total) }}</td>
+              <td class="px-5 py-3 text-right tabular-nums text-green-700 dark:text-green-400 font-medium">{{ fmtSGD(row.paid) }}</td>
+              <td class="px-5 py-3 text-right tabular-nums font-medium" :class="(row.total - row.paid) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400'">
+                {{ fmtSGD(row.total - row.paid) }}
+              </td>
+              <td class="px-5 py-3">
+                <button @click="statusFilter = ''; search = row.month.slice(0,7)" class="text-xs text-blue-600 hover:underline">
+                  View
+                </button>
+              </td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="border-t-2 border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/40">
+              <td class="px-5 py-3 text-xs font-bold text-gray-600 uppercase tracking-wide">Total</td>
+              <td class="px-5 py-3 text-center font-bold text-gray-700 dark:text-slate-300">{{ summaryTotals.count }}</td>
+              <td class="px-5 py-3 text-right font-bold tabular-nums text-gray-800 dark:text-slate-200">{{ fmtSGD(summaryTotals.total) }}</td>
+              <td class="px-5 py-3 text-right font-bold tabular-nums text-green-700 dark:text-green-400">{{ fmtSGD(summaryTotals.paid) }}</td>
+              <td class="px-5 py-3 text-right font-bold tabular-nums" :class="(summaryTotals.total - summaryTotals.paid) > 0 ? 'text-amber-600' : 'text-gray-400'">
+                {{ fmtSGD(summaryTotals.total - summaryTotals.paid) }}
+              </td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Filters -->
     <div class="filter-bar">
       <div class="search-input w-64">
         <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -66,6 +149,7 @@ onMounted(async () => {
       <div class="text-sm text-gray-500 ml-auto self-end pb-1.5">{{ filtered.length }} result{{ filtered.length !== 1 ? 's' : '' }}</div>
     </div>
 
+    <!-- Table -->
     <div class="card p-0 overflow-hidden">
       <table class="mat-table">
         <thead>
@@ -85,8 +169,8 @@ onMounted(async () => {
           <tr v-for="inv in filtered" :key="inv.id">
             <td><RouterLink :to="`/invoices/${inv.id}`" class="font-medium text-blue-600 hover:underline">{{ inv.invoiceNo }}</RouterLink></td>
             <td class="text-gray-700">{{ inv.client?.companyName }}</td>
-            <td class="text-gray-500">{{ fmt(inv.date) }}</td>
-            <td class="text-gray-500" :class="inv.status === 'overdue' ? 'text-red-700 font-medium' : ''">{{ fmt(inv.dueDate) }}</td>
+            <td class="text-gray-500">{{ fmtDate(inv.date) }}</td>
+            <td class="text-gray-500" :class="inv.status === 'overdue' ? 'text-red-700 font-medium' : ''">{{ fmtDate(inv.dueDate) }}</td>
             <td class="text-right font-medium tabular-nums">{{ fmtSGD(inv.totalAmount) }}</td>
             <td><StatusBadge :status="inv.status"/></td>
             <td>

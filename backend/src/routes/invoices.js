@@ -236,6 +236,18 @@ router.delete('/:id', rbac('admin', 'staff'), async (req, res) => {
   }
 });
 
+router.post('/:id/mark-sent', rbac('admin', 'staff'), async (req, res) => {
+  try {
+    const invoice = await Invoice.findByPk(req.params.id);
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+    if (invoice.status !== 'draft') return res.status(400).json({ message: 'Only draft invoices can be marked as sent' });
+    await invoice.update({ status: 'sent' });
+    res.json({ message: 'Invoice marked as sent' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.post('/:id/mark-paid', rbac('admin'), async (req, res) => {
   try {
     const invoice = await Invoice.findByPk(req.params.id);

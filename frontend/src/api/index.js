@@ -21,6 +21,7 @@ export const invoicesApi = {
   remove: (id) => api.delete(`/invoices/${id}`),
   getPdf: (id) => api.get(`/invoices/${id}/pdf`, { responseType: 'blob' }),
   sendEmail: (id) => api.post(`/invoices/${id}/send-email`),
+  markSent: (id) => api.post(`/invoices/${id}/mark-sent`),
   markPaid: (id, data) => api.post(`/invoices/${id}/mark-paid`, data),
 };
 

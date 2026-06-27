@@ -72,6 +72,16 @@ function openPaidModal() {
   showPaidModal.value = true;
 }
 
+async function markSent() {
+  actionLoading.value = 'sent';
+  try {
+    await invoicesApi.markSent(invoice.value.id);
+    await reload();
+    showToast('Invoice marked as sent!');
+  } catch (e) { showToast('Error: ' + (e.response?.data?.message || 'Failed')); }
+  finally { actionLoading.value = ''; }
+}
+
 async function confirmMarkPaid() {
   if (!paidForm.value.paymentDate) return;
   actionLoading.value = 'paid';
@@ -148,6 +158,7 @@ onMounted(async () => {
         <RouterLink v-if="invoice.status === 'draft'" :to="`/invoices/${invoice.id}/edit`" class="btn-secondary">Edit</RouterLink>
         <button @click="downloadPdf" :disabled="actionLoading === 'pdf'" class="btn-secondary">{{ actionLoading === 'pdf' ? 'Generating…' : 'Download PDF' }}</button>
         <button v-if="!['paid','cancelled'].includes(invoice.status)" @click="sendEmail" :disabled="actionLoading === 'email'" class="btn-secondary">{{ actionLoading === 'email' ? 'Sending…' : 'Send Email' }}</button>
+        <button v-if="invoice.status === 'draft'" @click="markSent" :disabled="actionLoading === 'sent'" class="btn-secondary text-indigo-600 border-indigo-200 hover:bg-indigo-50">{{ actionLoading === 'sent' ? '…' : 'Mark as Sent' }}</button>
         <button v-if="['sent','overdue'].includes(invoice.status)" @click="openPaidModal" :disabled="actionLoading === 'paid'" class="btn-primary">{{ actionLoading === 'paid' ? '…' : 'Mark Paid' }}</button>
         <button v-if="invoice.status === 'draft'" @click="deleteInvoice" :disabled="actionLoading === 'delete'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'delete' ? 'Deleting…' : 'Delete' }}</button>
       </div>
