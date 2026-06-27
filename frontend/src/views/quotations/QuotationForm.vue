@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { quotationsApi, clientsApi } from '../../api/index.js';
+import { quotationsApi, clientsApi, itemCatalogApi } from '../../api/index.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import LineItemEditor from '../../components/shared/LineItemEditor.vue';
 
@@ -17,13 +17,17 @@ const form = ref({
   items: [{ sno: 1, itemType: 'service', jobDescription: '', fromDate: '', toDate: '', rate: '', rateType: 'per_week', deliveryDate: '', quantity: 1, unitPrice: '', totalAmount: 0 }],
 });
 const clients = ref([]);
+const catalog = ref([]);
 const loading = ref(false);
 const error = ref('');
 const total = computed(() => form.value.items.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0));
 
 onMounted(async () => {
   await settingsStore.fetchSettings();
-  clients.value = (await clientsApi.list()).data;
+  [clients.value, catalog.value] = await Promise.all([
+    clientsApi.list().then(r => r.data),
+    itemCatalogApi.list().then(r => r.data).catch(() => []),
+  ]);
   if (isEdit.value) {
     const { data } = await quotationsApi.get(route.params.id);
     form.value = {
@@ -68,7 +72,7 @@ async function submit() {
       </div>
 
       <div class="section-label mb-3">Line Items</div>
-      <LineItemEditor v-model="form.items" />
+      <LineItemEditor v-model="form.items" :catalog="catalog" />
 
       <div class="flex justify-end mt-5 pt-5 border-t border-gray-100">
         <div class="text-right">

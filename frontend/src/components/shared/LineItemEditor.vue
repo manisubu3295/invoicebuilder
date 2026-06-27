@@ -1,13 +1,63 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
-const props = defineProps({ modelValue: Array });
+const props = defineProps({
+  modelValue: Array,
+  catalog: { type: Array, default: () => [] },
+});
 const emit = defineEmits(['update:modelValue']);
 
 const items = computed({
   get: () => props.modelValue,
   set: (v) => emit('update:modelValue', v),
 });
+
+// Dropdown state
+const openIdx = ref(-1);
+const dropdownStyle = ref({});
+
+function catalogSuggestions(row) {
+  if (!props.catalog.length) return [];
+  const q = (row.jobDescription || '').toLowerCase().trim();
+  if (!q) return props.catalog.slice(0, 10);
+  return props.catalog.filter(c => c.name.toLowerCase().includes(q)).slice(0, 10);
+}
+
+function onDescFocus(i, event) {
+  const rect = event.target.getBoundingClientRect();
+  dropdownStyle.value = {
+    position: 'fixed',
+    top: (rect.bottom + 2) + 'px',
+    left: rect.left + 'px',
+    width: '300px',
+    zIndex: 9999,
+  };
+  openIdx.value = i;
+}
+
+function onDescInput(i, value) {
+  updateItem(i, 'jobDescription', value);
+  openIdx.value = i;
+}
+
+function onDescBlur(i) {
+  setTimeout(() => { if (openIdx.value === i) openIdx.value = -1; }, 200);
+}
+
+function selectCatalogItem(rowIdx, catItem) {
+  const updated = [...items.value];
+  const row = { ...updated[rowIdx] };
+  row.jobDescription = catItem.name;
+  if (row.itemType === 'delivery') {
+    row.unitPrice = catItem.unitPrice || '';
+  } else {
+    if (catItem.unitPrice) row.rate = catItem.unitPrice;
+  }
+  row.totalAmount = calcTotal(row);
+  updated[rowIdx] = row;
+  items.value = updated;
+  openIdx.value = -1;
+}
 
 function addRow(type = 'service') {
   items.value = [...items.value, {
@@ -62,6 +112,8 @@ const inputCls = 'w-full bg-transparent focus:outline-none focus:ring-1 focus:ri
       <tbody>
         <tr v-for="(item, i) in items" :key="i" class="border-b border-gray-100 hover:bg-gray-50"
             :class="item.itemType === 'delivery' ? 'bg-blue-50/30' : ''">
+
+          <!-- # / type toggle -->
           <td class="px-2 py-2 text-center border-r border-gray-100">
             <div class="text-gray-400 text-xs leading-none">{{ item.sno }}</div>
             <button @click="updateItem(i,'itemType', item.itemType==='delivery'?'service':'delivery')"
@@ -71,26 +123,43 @@ const inputCls = 'w-full bg-transparent focus:outline-none focus:ring-1 focus:ri
               {{ item.itemType === 'delivery' ? 'DEL' : 'SVC' }}
             </button>
           </td>
+
+          <!-- Description — catalog autocomplete via Teleport -->
           <td class="px-2 py-2 border-r border-gray-100">
-            <input :value="item.jobDescription" @input="updateItem(i,'jobDescription',$event.target.value)"
-              :class="inputCls" :placeholder="item.itemType==='delivery' ? 'e.g. Milk, Rice…' : 'e.g. Lorry hire'"/>
+            <input
+              :value="item.jobDescription"
+              @input="onDescInput(i, $event.target.value)"
+              @focus="onDescFocus(i, $event)"
+              @blur="onDescBlur(i)"
+              :class="inputCls"
+              placeholder="Search catalog or type custom…"
+              autocomplete="off"
+            />
           </td>
+
+          <!-- Date / From -->
           <td class="px-2 py-2 border-r border-gray-100">
             <input v-if="item.itemType !== 'delivery'" type="date" :value="item.fromDate"
               @input="updateItem(i,'fromDate',$event.target.value)" :class="inputCls + ' text-xs'"/>
             <input v-else type="date" :value="item.deliveryDate"
               @input="updateItem(i,'deliveryDate',$event.target.value)" :class="inputCls + ' text-xs'"/>
           </td>
+
+          <!-- To Date -->
           <td class="px-2 py-2 border-r border-gray-100">
             <input v-if="item.itemType !== 'delivery'" type="date" :value="item.toDate"
               @input="updateItem(i,'toDate',$event.target.value)" :class="inputCls + ' text-xs'"/>
             <span v-else class="text-gray-300 text-xs px-1">—</span>
           </td>
+
+          <!-- Rate / Price -->
           <td class="px-2 py-2 border-r border-gray-100">
             <input type="number" :value="item.itemType==='delivery' ? item.unitPrice : item.rate"
               @input="updateItem(i, item.itemType==='delivery' ? 'unitPrice' : 'rate', $event.target.value)"
               :class="inputCls + ' text-right'" placeholder="0.00"/>
           </td>
+
+          <!-- Per / Qty -->
           <td class="px-2 py-2 border-r border-gray-100">
             <select v-if="item.itemType !== 'delivery'" :value="item.rateType"
               @change="updateItem(i,'rateType',$event.target.value)"
@@ -102,11 +171,15 @@ const inputCls = 'w-full bg-transparent focus:outline-none focus:ring-1 focus:ri
               @input="updateItem(i,'quantity',$event.target.value)"
               :class="inputCls + ' text-right'" placeholder="Qty" min="0" step="0.001"/>
           </td>
+
+          <!-- Amount -->
           <td class="px-2 py-2 border-r border-gray-100">
             <input type="number" :value="item.totalAmount"
               @input="updateItem(i,'totalAmount',$event.target.value)"
               :class="inputCls + ' text-right font-semibold'" placeholder="0.00"/>
           </td>
+
+          <!-- Remove -->
           <td class="px-1 py-2 text-center">
             <button @click="removeRow(i)" class="text-gray-300 hover:text-red-500 text-lg leading-none font-bold">×</button>
           </td>
@@ -115,8 +188,34 @@ const inputCls = 'w-full bg-transparent focus:outline-none focus:ring-1 focus:ri
     </table>
   </div>
 
-  <div class="flex gap-2 mt-3">
+  <!-- Catalog dropdown rendered in body to escape overflow:hidden/auto containers -->
+  <Teleport to="body">
+    <div v-if="openIdx >= 0 && catalogSuggestions(items[openIdx]).length"
+      :style="dropdownStyle"
+      class="bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
+      <div class="px-3 py-1.5 text-[10px] uppercase tracking-wider text-gray-400 bg-gray-50 border-b border-gray-100 flex items-center gap-1">
+        <span class="material-icons" style="font-size:12px">auto_awesome</span>
+        Item Catalog
+      </div>
+      <ul class="max-h-48 overflow-y-auto">
+        <li v-for="cat in catalogSuggestions(items[openIdx])" :key="cat.id"
+          @mousedown.prevent="selectCatalogItem(openIdx, cat)"
+          class="flex items-center justify-between px-3 py-2.5 hover:bg-blue-50 cursor-pointer gap-3 border-b border-gray-50 last:border-0">
+          <span class="text-sm text-gray-800 font-medium truncate">{{ cat.name }}</span>
+          <span class="text-xs text-gray-400 shrink-0 tabular-nums">
+            {{ cat.unit ? cat.unit + ' · ' : '' }}S${{ parseFloat(cat.unitPrice || 0).toFixed(2) }}
+          </span>
+        </li>
+      </ul>
+    </div>
+  </Teleport>
+
+  <div class="flex gap-2 mt-3 items-center flex-wrap">
     <button @click="addRow('service')" class="btn-secondary text-xs h-7 px-3">+ Service</button>
     <button @click="addRow('delivery')" class="text-xs h-7 px-3 border border-blue-300 text-blue-700 bg-blue-50 rounded hover:bg-blue-100 font-medium uppercase tracking-wide">+ Delivery</button>
+    <span v-if="catalog.length" class="text-xs text-gray-400 ml-1">
+      <span class="material-icons align-middle" style="font-size:13px">auto_awesome</span>
+      {{ catalog.length }} catalog item{{ catalog.length !== 1 ? 's' : '' }} — click description to search
+    </span>
   </div>
 </template>
