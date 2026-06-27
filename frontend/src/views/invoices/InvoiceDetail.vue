@@ -103,6 +103,21 @@ async function deleteInvoice() {
 }
 
 async function reload() { invoice.value = (await invoicesApi.get(route.params.id)).data; }
+function printInvoice() { window.print(); }
+
+const daysUntilDue = computed(() => {
+  if (!invoice.value?.dueDate) return null;
+  return Math.ceil((new Date(invoice.value.dueDate) - new Date()) / (1000 * 60 * 60 * 24));
+});
+
+const outstandingAlert = computed(() => {
+  const inv = invoice.value;
+  if (!inv || !['sent', 'overdue'].includes(inv.status)) return null;
+  const days = daysUntilDue.value;
+  const paid = (inv.payments || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+  const outstanding = parseFloat(inv.totalAmount || 0) - paid;
+  return { outstanding, days };
+});
 
 onMounted(async () => {
   await settingsStore.fetchSettings();
@@ -154,14 +169,48 @@ onMounted(async () => {
         <h1 class="page-title mb-0">{{ invoice.invoiceNo }}</h1>
         <StatusBadge :status="invoice.status" />
       </div>
-      <div class="flex gap-2 flex-wrap">
+      <div class="flex gap-2 flex-wrap print:hidden">
         <RouterLink v-if="invoice.status === 'draft'" :to="`/invoices/${invoice.id}/edit`" class="btn-secondary">Edit</RouterLink>
         <button @click="downloadPdf" :disabled="actionLoading === 'pdf'" class="btn-secondary">{{ actionLoading === 'pdf' ? 'Generating…' : 'Download PDF' }}</button>
+        <button @click="printInvoice" class="btn-secondary">
+          <span class="material-icons" style="font-size:16px">print</span>
+          Print
+        </button>
         <button v-if="!['paid','cancelled'].includes(invoice.status)" @click="sendEmail" :disabled="actionLoading === 'email'" class="btn-secondary">{{ actionLoading === 'email' ? 'Sending…' : 'Send Email' }}</button>
         <button v-if="invoice.status === 'draft'" @click="markSent" :disabled="actionLoading === 'sent'" class="btn-secondary text-indigo-600 border-indigo-200 hover:bg-indigo-50">{{ actionLoading === 'sent' ? '…' : 'Mark as Sent' }}</button>
         <button v-if="['sent','overdue'].includes(invoice.status)" @click="openPaidModal" :disabled="actionLoading === 'paid'" class="btn-primary">{{ actionLoading === 'paid' ? '…' : 'Mark Paid' }}</button>
         <button v-if="invoice.status === 'draft'" @click="deleteInvoice" :disabled="actionLoading === 'delete'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'delete' ? 'Deleting…' : 'Delete' }}</button>
       </div>
+    </div>
+
+    <!-- Outstanding alert -->
+    <div v-if="outstandingAlert" class="print:hidden mb-4 rounded-xl border p-4 flex items-center justify-between gap-4"
+      :class="invoice.status === 'overdue'
+        ? 'bg-red-50 border-red-200'
+        : outstandingAlert.days !== null && outstandingAlert.days <= 7
+          ? 'bg-amber-50 border-amber-200'
+          : 'bg-blue-50 border-blue-200'">
+      <div class="flex items-center gap-3">
+        <span class="material-icons text-2xl"
+          :class="invoice.status === 'overdue' ? 'text-red-500' : 'text-amber-500'">
+          {{ invoice.status === 'overdue' ? 'warning' : 'pending_actions' }}
+        </span>
+        <div>
+          <div class="text-lg font-bold"
+            :class="invoice.status === 'overdue' ? 'text-red-700' : 'text-amber-700'">
+            Outstanding: {{ fmt(outstandingAlert.outstanding) }}
+          </div>
+          <div class="text-sm"
+            :class="invoice.status === 'overdue' ? 'text-red-600' : 'text-amber-600'">
+            <span v-if="invoice.status === 'overdue'">Overdue since {{ fmtDate(invoice.dueDate) }}</span>
+            <span v-else-if="outstandingAlert.days !== null && outstandingAlert.days >= 0">
+              Due {{ fmtDate(invoice.dueDate) }} · {{ outstandingAlert.days }} day{{ outstandingAlert.days !== 1 ? 's' : '' }} remaining
+            </span>
+            <span v-else>Due {{ fmtDate(invoice.dueDate) }}</span>
+          </div>
+        </div>
+      </div>
+      <button @click="openPaidModal" class="btn-primary shrink-0">Record Payment</button>
     </div>
 
     <!-- Document -->
@@ -268,7 +317,7 @@ onMounted(async () => {
     </div>
 
     <!-- Payment History -->
-    <div v-if="invoice.payments?.length" class="card p-0">
+    <div v-if="invoice.payments?.length" class="card p-0 print:hidden">
       <div class="card-header"><span class="card-title">Payment History</span></div>
       <div v-for="p in invoice.payments" :key="p.id" class="flex justify-between text-sm py-3 px-5 border-b border-gray-100 last:border-0">
         <span class="text-gray-600">{{ fmtDateLong(p.paymentDate) }} <span class="text-gray-400">· {{ p.method }}</span></span>
@@ -277,3 +326,12 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<style>
+@media print {
+  aside, header, nav, [data-topbar] { display: none !important; }
+  body, html { background: white !important; }
+  .page-container { max-width: 100% !important; padding: 0 !important; }
+  .print\:hidden { display: none !important; }
+}
+</style>

@@ -62,6 +62,25 @@ export const reportsApi = {
   revenue: (year) => api.get('/reports/revenue', { params: { year } }),
   aging: () => api.get('/reports/aging'),
   clientSummary: () => api.get('/reports/client-summary'),
+  driverSummary: () => api.get('/reports/driver-summary'),
+  vehicleSummary: () => api.get('/reports/vehicle-summary'),
+  expenseSummary: () => api.get('/reports/expense-summary'),
+};
+
+export const jobAttendanceApi = {
+  list: (jobId) => api.get('/job-attendance', { params: { jobId } }),
+  activeSessions: () => api.get('/job-attendance/active'),
+  checkin: (data) => api.post('/job-attendance', data),
+  checkout: (id, data) => api.put(`/job-attendance/${id}/end`, data),
+};
+
+export const expensesApi = {
+  list: (params) => api.get('/expenses', { params }),
+  create: (data) => api.post('/expenses', data),
+  update: (id, data) => api.put(`/expenses/${id}`, data),
+  remove: (id) => api.delete(`/expenses/${id}`),
+  approve: (id, data) => api.post(`/expenses/${id}/approve`, data),
+  reject: (id, data) => api.post(`/expenses/${id}/reject`, data),
 };
 
 export const usersApi = {

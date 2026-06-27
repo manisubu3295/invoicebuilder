@@ -22,6 +22,7 @@ const navItems = computed(() => {
       { path: '/dashboard',    label: 'Dashboard',    icon: 'dashboard' },
       { path: '/jobs',         label: 'My Jobs',       icon: 'local_shipping' },
       { path: '/delivery-log', label: 'Delivery Log',  icon: 'inventory_2' },
+      { path: '/expenses',     label: 'Expenses',      icon: 'payments' },
     ];
   }
   return [
@@ -31,7 +32,9 @@ const navItems = computed(() => {
     { path: '/clients',      label: 'Clients',      icon: 'business' },
     { path: '/jobs',         label: 'Jobs',         icon: 'local_shipping' },
     { path: '/delivery-log', label: 'Delivery Log', icon: 'inventory_2' },
+    { path: '/expenses',     label: 'Expenses',     icon: 'payments' },
     { path: '/drivers',      label: 'Drivers',      icon: 'badge' },
+    { path: '/drivers/map',  label: 'Driver Map',   icon: 'map' },
     { path: '/vehicles',     label: 'Fleet',        icon: 'directions_car' },
     { path: '/reports',      label: 'Reports',      icon: 'bar_chart' },
     ...(auth.user?.role === 'admin' ? [
@@ -45,6 +48,7 @@ const navItems = computed(() => {
 
 function isActive(path) {
   if (path === '/dashboard') return route.path === '/dashboard';
+  if (path === '/drivers') return route.path === '/drivers';
   return route.path.startsWith(path);
 }
 </script>

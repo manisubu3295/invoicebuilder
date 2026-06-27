@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { Invoice, InvoiceItem, Client, Payment, Job } = require('../models');
+const { Invoice, InvoiceItem, Client, Payment, Job, Driver, Vehicle, User, JobAttendance, Expense } = require('../models');
 const { Op, fn, col, literal } = require('sequelize');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
@@ -152,6 +152,151 @@ router.get('/client-summary', async (req, res) => {
     });
 
     res.json(summary.sort((a, b) => b.totalBilled - a.totalBilled));
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/driver-summary', async (req, res) => {
+  try {
+    const drivers = await Driver.findAll({
+      include: [
+        { model: User, as: 'user', attributes: ['id', 'name', 'email'] },
+        {
+          model: Job,
+          as: 'jobs',
+          attributes: ['id', 'status', 'fromDate', 'toDate'],
+          include: [{ model: Invoice, as: 'invoice', attributes: ['id', 'totalAmount', 'status'] }],
+        },
+        { model: JobAttendance, as: 'attendance', attributes: ['id', 'date', 'status'] },
+      ],
+    });
+
+    const summary = drivers.map(d => {
+      const jobs = d.jobs || [];
+      const attendance = d.attendance || [];
+      const completedJobs = jobs.filter(j => j.status === 'delivered').length;
+      const daysWorked = attendance.filter(a => a.status === 'completed').length;
+      const linkedRevenue = jobs.reduce((s, j) => {
+        if (j.invoice && j.invoice.status === 'paid') return s + parseFloat(j.invoice.totalAmount || 0);
+        return s;
+      }, 0);
+      return {
+        driverId: d.id,
+        name: d.user?.name || 'Unknown',
+        email: d.user?.email,
+        totalJobs: jobs.length,
+        completedJobs,
+        daysWorked,
+        linkedRevenue,
+      };
+    });
+
+    res.json(summary.sort((a, b) => b.totalJobs - a.totalJobs));
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/vehicle-summary', async (req, res) => {
+  try {
+    const vehicles = await Vehicle.findAll({
+      include: [
+        {
+          model: Job,
+          as: 'jobs',
+          attributes: ['id', 'status', 'fromDate', 'toDate'],
+        },
+      ],
+    });
+
+    const summary = vehicles.map(v => {
+      const jobs = v.jobs || [];
+      const completedJobs = jobs.filter(j => j.status === 'delivered').length;
+      const totalDays = jobs.reduce((s, j) => {
+        if (!j.fromDate || !j.toDate) return s;
+        const diff = Math.ceil((new Date(j.toDate) - new Date(j.fromDate)) / (1000 * 60 * 60 * 24)) + 1;
+        return s + Math.max(1, diff);
+      }, 0);
+      return {
+        vehicleId: v.id,
+        plateNumber: v.plateNumber,
+        type: v.type,
+        size: v.size,
+        status: v.status,
+        totalJobs: jobs.length,
+        completedJobs,
+        totalDays,
+      };
+    });
+
+    res.json(summary.sort((a, b) => b.totalJobs - a.totalJobs));
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/expense-summary', async (req, res) => {
+  try {
+    const expenses = await Expense.findAll({
+      include: [
+        {
+          model: Driver,
+          as: 'driver',
+          include: [{ model: User, as: 'user', attributes: ['id', 'name'] }],
+        },
+        { model: Vehicle, as: 'vehicle', attributes: ['id', 'plateNumber', 'type'] },
+      ],
+      order: [['date', 'DESC']],
+    });
+
+    // Driver summary
+    const driverMap = {};
+    for (const e of expenses) {
+      const key = e.driverId;
+      if (!driverMap[key]) {
+        driverMap[key] = {
+          driverId: key,
+          name: e.driver?.user?.name || 'Unknown',
+          total: 0, approved: 0, pending: 0, rejected: 0,
+          byCategory: {},
+        };
+      }
+      const amt = parseFloat(e.amount || 0);
+      driverMap[key].total += amt;
+      driverMap[key][e.status] = (driverMap[key][e.status] || 0) + amt;
+      driverMap[key].byCategory[e.category] = (driverMap[key].byCategory[e.category] || 0) + amt;
+    }
+
+    // Vehicle fuel summary
+    const vehicleMap = {};
+    for (const e of expenses) {
+      if (!e.vehicleId || !['fuel_petrol', 'fuel_diesel'].includes(e.category)) continue;
+      const key = e.vehicleId;
+      if (!vehicleMap[key]) {
+        vehicleMap[key] = {
+          vehicleId: key,
+          plateNumber: e.vehicle?.plateNumber || 'Unknown',
+          type: e.vehicle?.type || '',
+          petrolCost: 0, petrolLiters: 0,
+          dieselCost: 0, dieselLiters: 0,
+        };
+      }
+      const amt = parseFloat(e.amount || 0);
+      const liters = parseFloat(e.fuelLiters || 0);
+      if (e.category === 'fuel_petrol') {
+        vehicleMap[key].petrolCost += amt;
+        vehicleMap[key].petrolLiters += liters;
+      } else {
+        vehicleMap[key].dieselCost += amt;
+        vehicleMap[key].dieselLiters += liters;
+      }
+    }
+
+    res.json({
+      driverSummary: Object.values(driverMap).sort((a, b) => b.total - a.total),
+      vehicleFuel: Object.values(vehicleMap).sort((a, b) => (b.petrolCost + b.dieselCost) - (a.petrolCost + a.dieselCost)),
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

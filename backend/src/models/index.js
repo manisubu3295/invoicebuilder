@@ -24,6 +24,8 @@ db.CompanySettings = require('./CompanySettings')(sequelize, Sequelize.DataTypes
 db.DeliveryLog = require('./DeliveryLog')(sequelize, Sequelize.DataTypes);
 db.DeliveryItem = require('./DeliveryItem')(sequelize, Sequelize.DataTypes);
 db.ItemCatalog = require('./ItemCatalog')(sequelize, Sequelize.DataTypes);
+db.JobAttendance = require('./JobAttendance')(sequelize, Sequelize.DataTypes);
+db.Expense = require('./Expense')(sequelize, Sequelize.DataTypes);
 
 // Associations
 db.Client.hasMany(db.Quotation, { foreignKey: 'clientId', as: 'quotations' });
@@ -70,5 +72,21 @@ db.DeliveryLog.belongsTo(db.User, { foreignKey: 'deliveredById', as: 'deliveredB
 
 db.DeliveryLog.hasMany(db.DeliveryItem, { foreignKey: 'deliveryLogId', as: 'items', onDelete: 'CASCADE' });
 db.DeliveryItem.belongsTo(db.DeliveryLog, { foreignKey: 'deliveryLogId' });
+
+// JobAttendance associations
+db.Job.hasMany(db.JobAttendance, { foreignKey: 'jobId', as: 'attendance', onDelete: 'CASCADE' });
+db.JobAttendance.belongsTo(db.Job, { foreignKey: 'jobId', as: 'job' });
+db.Driver.hasMany(db.JobAttendance, { foreignKey: 'driverId', as: 'attendance' });
+db.JobAttendance.belongsTo(db.Driver, { foreignKey: 'driverId', as: 'driver' });
+
+// Expense associations
+db.Driver.hasMany(db.Expense, { foreignKey: 'driverId', as: 'expenses' });
+db.Expense.belongsTo(db.Driver, { foreignKey: 'driverId', as: 'driver' });
+db.Vehicle.hasMany(db.Expense, { foreignKey: 'vehicleId', as: 'expenses' });
+db.Expense.belongsTo(db.Vehicle, { foreignKey: 'vehicleId', as: 'vehicle' });
+db.Job.hasMany(db.Expense, { foreignKey: 'jobId', as: 'expenses' });
+db.Expense.belongsTo(db.Job, { foreignKey: 'jobId', as: 'job' });
+db.User.hasMany(db.Expense, { foreignKey: 'approvedById', as: 'approvedExpenses' });
+db.Expense.belongsTo(db.User, { foreignKey: 'approvedById', as: 'approvedBy' });
 
 module.exports = db;

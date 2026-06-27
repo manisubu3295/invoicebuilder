@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const fs = require('fs');
-const { Invoice, InvoiceItem, Client, Payment, CompanySettings, DeliveryLog } = require('../models');
+const { Invoice, InvoiceItem, Client, Payment, CompanySettings, DeliveryLog, Job, Driver, Vehicle, User } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 const { generateInvoiceNumber } = require('../services/invoiceNumber');
@@ -11,19 +11,35 @@ router.use(auth);
 
 router.get('/', async (req, res) => {
   try {
-    const { status, clientId } = req.query;
+    const { status, clientId, driverId, vehicleId } = req.query;
     const where = {};
     if (status) where.status = status;
     if (clientId) where.clientId = clientId;
 
-    const invoices = await Invoice.findAll({
+    const jobInclude = {
+      model: Job,
+      as: 'job',
+      attributes: ['id', 'driverId', 'vehicleId'],
+      include: [
+        { model: Driver, as: 'driver', include: [{ model: User, as: 'user', attributes: ['name'] }] },
+        { model: Vehicle, as: 'vehicle', attributes: ['plateNumber', 'type'] },
+      ],
+    };
+
+    let invoices = await Invoice.findAll({
       where,
       include: [
         { model: Client, as: 'client', attributes: ['id', 'companyName', 'clientCode', 'email'] },
         { model: InvoiceItem, as: 'items' },
+        jobInclude,
       ],
       order: [['createdAt', 'DESC']],
     });
+
+    // Filter by driverId/vehicleId (via linked job)
+    if (driverId) invoices = invoices.filter(inv => inv.job?.driverId === driverId);
+    if (vehicleId) invoices = invoices.filter(inv => inv.job?.vehicleId === vehicleId);
+
     res.json(invoices);
   } catch (err) {
     res.status(500).json({ message: err.message });

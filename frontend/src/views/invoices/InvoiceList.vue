@@ -1,19 +1,44 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { invoicesApi } from '../../api/index.js';
+import { invoicesApi, driversApi, vehiclesApi } from '../../api/index.js';
 import StatusBadge from '../../components/shared/StatusBadge.vue';
 
 const invoices = ref([]);
+const drivers = ref([]);
+const vehicles = ref([]);
 const loading = ref(true);
 const search = ref('');
 const statusFilter = ref('');
+const driverFilter = ref('');
+const vehicleFilter = ref('');
 const showMonthly = ref(true);
+const actionLoading = ref('');
+
+async function markSent(inv) {
+  actionLoading.value = inv.id + '-sent';
+  try {
+    await invoicesApi.markSent(inv.id);
+    inv.status = 'sent';
+  } catch (e) { alert(e.response?.data?.message || 'Failed'); }
+  finally { actionLoading.value = ''; }
+}
+
+async function markPaid(inv) {
+  actionLoading.value = inv.id + '-paid';
+  try {
+    await invoicesApi.markPaid(inv.id, {});
+    inv.status = 'paid';
+  } catch (e) { alert(e.response?.data?.message || 'Failed'); }
+  finally { actionLoading.value = ''; }
+}
 
 const filtered = computed(() => invoices.value.filter(inv => {
   const s = search.value.toLowerCase();
   const matchS = !s || inv.invoiceNo.toLowerCase().includes(s) || inv.client?.companyName.toLowerCase().includes(s);
   const matchSt = !statusFilter.value || inv.status === statusFilter.value;
-  return matchS && matchSt;
+  const matchDr = !driverFilter.value || inv.job?.driverId === driverFilter.value;
+  const matchVh = !vehicleFilter.value || inv.job?.vehicleId === vehicleFilter.value;
+  return matchS && matchSt && matchDr && matchVh;
 }));
 
 const monthlySummary = computed(() => {
@@ -54,8 +79,13 @@ async function downloadPdf(id, invoiceNo) {
 }
 
 onMounted(async () => {
-  try { invoices.value = (await invoicesApi.list()).data; }
-  finally { loading.value = false; }
+  try {
+    [invoices.value, drivers.value, vehicles.value] = await Promise.all([
+      invoicesApi.list().then(r => r.data),
+      driversApi.list().then(r => r.data).catch(() => []),
+      vehiclesApi.list().then(r => r.data).catch(() => []),
+    ]);
+  } finally { loading.value = false; }
 });
 </script>
 
@@ -130,22 +160,27 @@ onMounted(async () => {
     </div>
 
     <!-- Filters -->
-    <div class="filter-bar">
-      <div class="search-input w-64">
+    <div class="filter-bar flex-wrap">
+      <div class="search-input w-56">
         <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         <input v-model="search" placeholder="Search by no. or client…"/>
       </div>
-      <div class="input-group">
-        <label class="input-label">Status</label>
-        <select v-model="statusFilter" class="input-field w-36">
-          <option value="">All</option>
-          <option value="draft">Draft</option>
-          <option value="sent">Sent</option>
-          <option value="paid">Paid</option>
-          <option value="overdue">Overdue</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-      </div>
+      <select v-model="statusFilter" class="input-field w-32">
+        <option value="">All Status</option>
+        <option value="draft">Draft</option>
+        <option value="sent">Sent</option>
+        <option value="paid">Paid</option>
+        <option value="overdue">Overdue</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <select v-model="driverFilter" class="input-field w-36">
+        <option value="">All Drivers</option>
+        <option v-for="d in drivers" :key="d.id" :value="d.id">{{ d.user?.name }}</option>
+      </select>
+      <select v-model="vehicleFilter" class="input-field w-36">
+        <option value="">All Vehicles</option>
+        <option v-for="v in vehicles" :key="v.id" :value="v.id">{{ v.plateNumber }}</option>
+      </select>
       <div class="text-sm text-gray-500 ml-auto self-end pb-1.5">{{ filtered.length }} result{{ filtered.length !== 1 ? 's' : '' }}</div>
     </div>
 
@@ -160,7 +195,7 @@ onMounted(async () => {
             <th>Due Date</th>
             <th class="text-right">Amount</th>
             <th>Status</th>
-            <th class="w-20"></th>
+            <th class="w-32"></th>
           </tr>
         </thead>
         <tbody>
@@ -174,9 +209,19 @@ onMounted(async () => {
             <td class="text-right font-medium tabular-nums">{{ fmtSGD(inv.totalAmount) }}</td>
             <td><StatusBadge :status="inv.status"/></td>
             <td>
-              <button @click="downloadPdf(inv.id, inv.invoiceNo)" class="btn-icon text-gray-400 hover:text-blue-600" title="Download PDF">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-              </button>
+              <div class="flex gap-1 items-center">
+                <button v-if="inv.status === 'draft'" @click="markSent(inv)" :disabled="actionLoading === inv.id+'-sent'" title="Mark as Sent"
+                  class="text-xs px-2 h-7 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-medium transition-colors disabled:opacity-50">
+                  {{ actionLoading === inv.id+'-sent' ? '…' : 'Send' }}
+                </button>
+                <button v-if="['sent','overdue'].includes(inv.status)" @click="markPaid(inv)" :disabled="actionLoading === inv.id+'-paid'" title="Mark as Paid"
+                  class="text-xs px-2 h-7 rounded-lg border border-green-200 text-green-700 hover:bg-green-50 font-medium transition-colors disabled:opacity-50">
+                  {{ actionLoading === inv.id+'-paid' ? '…' : 'Paid' }}
+                </button>
+                <button @click="downloadPdf(inv.id, inv.invoiceNo)" class="btn-icon text-gray-400 hover:text-blue-600" title="Download PDF">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
