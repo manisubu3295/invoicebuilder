@@ -1,7 +1,15 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { invoicesApi, driversApi, vehiclesApi } from '../../api/index.js';
 import StatusBadge from '../../components/shared/StatusBadge.vue';
+
+const PAGE_SIZE = 20;
+
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function monthStartStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
 
 const invoices = ref([]);
 const drivers = ref([]);
@@ -11,8 +19,25 @@ const search = ref('');
 const statusFilter = ref('');
 const driverFilter = ref('');
 const vehicleFilter = ref('');
+const fromDate = ref(monthStartStr());
+const toDate = ref(todayStr());
+const page = ref(1);
 const showMonthly = ref(true);
 const actionLoading = ref('');
+
+async function load() {
+  loading.value = true;
+  try {
+    invoices.value = (await invoicesApi.list({
+      fromDate: fromDate.value || undefined,
+      toDate: toDate.value || undefined,
+    })).data;
+  } finally { loading.value = false; }
+  page.value = 1;
+}
+
+watch([fromDate, toDate], load);
+watch([search, statusFilter, driverFilter, vehicleFilter], () => { page.value = 1; });
 
 async function markSent(inv) {
   actionLoading.value = inv.id + '-sent';
@@ -40,6 +65,9 @@ const filtered = computed(() => invoices.value.filter(inv => {
   const matchVh = !vehicleFilter.value || inv.job?.vehicleId === vehicleFilter.value;
   return matchS && matchSt && matchDr && matchVh;
 }));
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)));
+const paginated = computed(() => filtered.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE));
 
 const monthlySummary = computed(() => {
   const map = {};
@@ -78,10 +106,15 @@ async function downloadPdf(id, invoiceNo) {
   URL.revokeObjectURL(url);
 }
 
+function clearDateFilter() {
+  fromDate.value = '';
+  toDate.value = '';
+}
+
 onMounted(async () => {
   try {
     [invoices.value, drivers.value, vehicles.value] = await Promise.all([
-      invoicesApi.list().then(r => r.data),
+      invoicesApi.list({ fromDate: fromDate.value, toDate: toDate.value }).then(r => r.data),
       driversApi.list().then(r => r.data).catch(() => []),
       vehiclesApi.list().then(r => r.data).catch(() => []),
     ]);
@@ -94,7 +127,7 @@ onMounted(async () => {
     <div class="page-header">
       <div>
         <h1 class="page-title">Invoices</h1>
-        <p class="page-subtitle">{{ invoices.length }} invoice{{ invoices.length !== 1 ? 's' : '' }}</p>
+        <p class="page-subtitle">{{ filtered.length }} of {{ invoices.length }} invoice{{ invoices.length !== 1 ? 's' : '' }}</p>
       </div>
       <RouterLink to="/invoices/new" class="btn-primary">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
@@ -161,10 +194,28 @@ onMounted(async () => {
 
     <!-- Filters -->
     <div class="filter-bar flex-wrap">
-      <div class="search-input w-56">
-        <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-        <input v-model="search" placeholder="Search by no. or client…"/>
+      <!-- Date range -->
+      <div class="flex items-end gap-2">
+        <div class="input-group">
+          <label class="input-label">From</label>
+          <input v-model="fromDate" type="date" class="input-field w-36"/>
+        </div>
+        <div class="input-group">
+          <label class="input-label">To</label>
+          <input v-model="toDate" type="date" class="input-field w-36"/>
+        </div>
+        <button v-if="fromDate || toDate" @click="clearDateFilter" title="Clear date filter"
+          class="mb-0.5 h-9 px-2 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+          <span class="material-icons" style="font-size:18px">close</span>
+        </button>
       </div>
+
+      <!-- Keyword search -->
+      <div class="search-input w-48">
+        <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input v-model="search" placeholder="No. or client…"/>
+      </div>
+
       <select v-model="statusFilter" class="input-field w-32">
         <option value="">All Status</option>
         <option value="draft">Draft</option>
@@ -200,8 +251,8 @@ onMounted(async () => {
         </thead>
         <tbody>
           <tr v-if="loading"><td colspan="7" class="text-center py-12 text-gray-400">Loading…</td></tr>
-          <tr v-else-if="!filtered.length"><td colspan="7" class="text-center py-12 text-gray-400">No invoices found.</td></tr>
-          <tr v-for="inv in filtered" :key="inv.id">
+          <tr v-else-if="!paginated.length"><td colspan="7" class="text-center py-12 text-gray-400">No invoices found.</td></tr>
+          <tr v-for="inv in paginated" :key="inv.id">
             <td><RouterLink :to="`/invoices/${inv.id}`" class="font-medium text-blue-600 hover:underline">{{ inv.invoiceNo }}</RouterLink></td>
             <td class="text-gray-700">{{ inv.client?.companyName }}</td>
             <td class="text-gray-500">{{ fmtDate(inv.date) }}</td>
@@ -226,6 +277,33 @@ onMounted(async () => {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="totalPages > 1" class="flex items-center justify-between mt-4 text-sm">
+      <button @click="page--" :disabled="page === 1"
+        class="btn-secondary px-3 py-1.5 disabled:opacity-40">
+        ← Prev
+      </button>
+      <div class="flex items-center gap-1">
+        <template v-for="p in totalPages" :key="p">
+          <button v-if="totalPages <= 7 || p === 1 || p === totalPages || Math.abs(p - page) <= 1"
+            @click="page = p"
+            :class="p === page ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'"
+            class="w-8 h-8 rounded-md border text-sm font-medium transition-colors">
+            {{ p }}
+          </button>
+          <span v-else-if="(p === 2 && page > 4) || (p === totalPages - 1 && page < totalPages - 3)"
+            class="text-gray-400 px-1">…</span>
+        </template>
+      </div>
+      <button @click="page++" :disabled="page === totalPages"
+        class="btn-secondary px-3 py-1.5 disabled:opacity-40">
+        Next →
+      </button>
+    </div>
+    <div v-else-if="!loading && filtered.length" class="mt-3 text-center text-xs text-gray-400">
+      {{ filtered.length }} result{{ filtered.length !== 1 ? 's' : '' }}
     </div>
   </div>
 </template>

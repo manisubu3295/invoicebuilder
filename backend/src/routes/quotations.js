@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const fs = require('fs');
+const { Op } = require('sequelize');
 const { Quotation, QuotationItem, Invoice, InvoiceItem, Client, CompanySettings } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
@@ -11,7 +12,15 @@ router.use(auth);
 
 router.get('/', async (req, res) => {
   try {
+    const { fromDate, toDate } = req.query;
+    const where = {};
+    if (fromDate || toDate) {
+      where.date = {};
+      if (fromDate) where.date[Op.gte] = fromDate;
+      if (toDate) where.date[Op.lte] = toDate;
+    }
     const quotations = await Quotation.findAll({
+      where,
       include: [
         { model: Client, as: 'client', attributes: ['id', 'companyName', 'clientCode'] },
         { model: QuotationItem, as: 'items' },

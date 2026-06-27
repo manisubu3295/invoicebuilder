@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const fs = require('fs');
+const { Op } = require('sequelize');
 const { Invoice, InvoiceItem, Client, Payment, CompanySettings, DeliveryLog, Job, Driver, Vehicle, User } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
@@ -11,10 +12,15 @@ router.use(auth);
 
 router.get('/', async (req, res) => {
   try {
-    const { status, clientId, driverId, vehicleId } = req.query;
+    const { status, clientId, driverId, vehicleId, fromDate, toDate } = req.query;
     const where = {};
     if (status) where.status = status;
     if (clientId) where.clientId = clientId;
+    if (fromDate || toDate) {
+      where.date = {};
+      if (fromDate) where.date[Op.gte] = fromDate;
+      if (toDate) where.date[Op.lte] = toDate;
+    }
 
     const jobInclude = {
       model: Job,
