@@ -17,5 +17,7 @@ module.exports = (sequelize) => {
     paymentTermsDays: { type: DataTypes.INTEGER, defaultValue: 30 },
     signatoryName: { type: DataTypes.STRING, allowNull: true },
     logoText: { type: DataTypes.STRING(10), allowNull: true },
+    sealImage: { type: DataTypes.TEXT('long'), allowNull: true },
+    signatureImage: { type: DataTypes.TEXT('long'), allowNull: true },
   }, { tableName: 'CompanySettings' });
 };

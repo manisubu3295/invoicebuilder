@@ -12,7 +12,22 @@ const form = ref({
   companyName: '', registrationNo: '', address: '', phone: '', email: '', website: '',
   bankName: '', bankAccountNo: '', bankAccountName: '',
   currency: 'SGD', currencySymbol: 'S$', paymentTermsDays: 30, signatoryName: '', logoText: '',
+  sealImage: null, signatureImage: null,
 });
+
+function pickImage(field) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { form.value[field] = ev.target.result; };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
 
 function showToast(msg, error = false) {
   toast.value = { msg, error };
@@ -32,7 +47,9 @@ async function save() {
 
 onMounted(async () => {
   const data = await store.fetchSettings();
-  if (data) Object.keys(form.value).forEach(k => { if (data[k] != null) form.value[k] = data[k]; });
+  if (data) {
+    Object.keys(form.value).forEach(k => { if (data[k] != null) form.value[k] = data[k]; });
+  }
 });
 </script>
 
@@ -153,6 +170,41 @@ onMounted(async () => {
           <div class="input-group"><label class="input-label">Currency Symbol</label><input v-model="form.currencySymbol" class="input-field" placeholder="S$" maxlength="5"/></div>
         </div>
         <div class="input-group"><label class="input-label">Signatory Name</label><input v-model="form.signatoryName" class="input-field" placeholder="Name on PDF signature line"/></div>
+      </div>
+    </div>
+
+    <!-- Seal & Signature -->
+    <div class="card mb-6">
+      <h2 class="section-label mb-5 pb-2 border-b border-gray-100 dark:border-slate-700">Seal & Signature</h2>
+      <p class="text-sm text-gray-500 dark:text-slate-400 mb-5">These images appear on the signature block of PDF invoices and quotations.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
+        <!-- Seal -->
+        <div>
+          <div class="input-label mb-2">Company Seal</div>
+          <div v-if="form.sealImage" class="mb-3 flex flex-col items-start gap-2">
+            <img :src="form.sealImage" alt="Seal preview" class="max-h-24 max-w-full rounded border border-gray-200 dark:border-slate-600 bg-white p-1"/>
+            <button type="button" @click="form.sealImage = null" class="text-xs text-red-500 hover:text-red-700">Remove</button>
+          </div>
+          <button type="button" @click="pickImage('sealImage')" class="btn-secondary text-sm">
+            {{ form.sealImage ? 'Change Image' : 'Upload Seal' }}
+          </button>
+          <p class="text-xs text-gray-400 dark:text-slate-500 mt-1.5">PNG or JPG, ideally transparent background</p>
+        </div>
+
+        <!-- Signature -->
+        <div>
+          <div class="input-label mb-2">Authorised Signature</div>
+          <div v-if="form.signatureImage" class="mb-3 flex flex-col items-start gap-2">
+            <img :src="form.signatureImage" alt="Signature preview" class="max-h-24 max-w-full rounded border border-gray-200 dark:border-slate-600 bg-white p-1"/>
+            <button type="button" @click="form.signatureImage = null" class="text-xs text-red-500 hover:text-red-700">Remove</button>
+          </div>
+          <button type="button" @click="pickImage('signatureImage')" class="btn-secondary text-sm">
+            {{ form.signatureImage ? 'Change Image' : 'Upload Signature' }}
+          </button>
+          <p class="text-xs text-gray-400 dark:text-slate-500 mt-1.5">PNG or JPG with white or transparent background</p>
+        </div>
+
       </div>
     </div>
 

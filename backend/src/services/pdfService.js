@@ -28,11 +28,19 @@ function getLogoHtml(settings) {
   return `<div style="width:64px;height:48px;background:#111827;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:15px;color:#fff;">${text}</div>`;
 }
 
-function getStampHtml() {
+function getStampHtml(settings = {}) {
+  if (settings.sealImage) {
+    return `<img src="${settings.sealImage}" alt="Seal" style="max-width:80px;max-height:80px;margin-bottom:4px;"/>`;
+  }
   const stampPath = path.join(__dirname, '../../assets/stamp.png');
   if (!fs.existsSync(stampPath)) return '';
   const b64 = fs.readFileSync(stampPath).toString('base64');
   return `<img src="data:image/png;base64,${b64}" alt="Stamp" style="width:68px;margin-bottom:4px;"/>`;
+}
+
+function getSignatureHtml(settings = {}) {
+  if (!settings.signatureImage) return '';
+  return `<img src="${settings.signatureImage}" alt="Signature" style="max-width:150px;max-height:60px;margin-bottom:4px;"/>`;
 }
 
 function calcPeriodText(item) {
@@ -214,7 +222,8 @@ function buildQuotationHtml(quotation, client, items, settings = {}) {
       <strong style="color:#111827;">${settings.companyName || ''}</strong>
     </div>
     <div style="text-align:center;min-width:180px;">
-      ${getStampHtml()}
+      ${getSignatureHtml(settings)}
+      ${getStampHtml(settings)}
       <div style="width:180px;border-bottom:1px solid #6b7280;margin:0 auto 6px;"></div>
       <div style="font-weight:bold;font-size:12px;">${settings.signatoryName || 'Authorised Signatory'}</div>
       <div style="font-size:10.5px;color:#6b7280;">Authorised Signatory</div>
@@ -298,7 +307,8 @@ function buildInvoiceHtml(invoice, client, items, settings = {}) {
     </div>` : `<div></div>`}
 
     <div style="text-align:center;min-width:180px;">
-      ${getStampHtml()}
+      ${getSignatureHtml(settings)}
+      ${getStampHtml(settings)}
       <div style="width:180px;border-bottom:1px solid #6b7280;margin:0 auto 6px;"></div>
       <div style="font-weight:bold;font-size:12px;">${settings.signatoryName || 'Authorised Signatory'}</div>
       <div style="font-size:10.5px;color:#6b7280;">Authorised Signatory</div>
@@ -421,7 +431,8 @@ function buildDeliveryInvoiceHtml(invoice, client, items, settings = {}) {
       </div>
     </div>` : `<div></div>`}
     <div style="text-align:center;min-width:180px;">
-      ${getStampHtml()}
+      ${getSignatureHtml(settings)}
+      ${getStampHtml(settings)}
       <div style="width:180px;border-bottom:1px solid #6b7280;margin:0 auto 6px;"></div>
       <div style="font-weight:bold;font-size:12px;">${settings.signatoryName || 'Authorised Signatory'}</div>
       <div style="font-size:10.5px;color:#6b7280;">Authorised Signatory</div>
