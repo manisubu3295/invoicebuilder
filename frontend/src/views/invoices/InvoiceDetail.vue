@@ -48,15 +48,15 @@ function showToast(msg) { toast.value = msg; setTimeout(() => toast.value = '', 
 async function downloadPdf() {
   actionLoading.value = 'pdf';
   try {
-    const { data } = await invoicesApi.getPdf(invoice.value.id);
-    const url = URL.createObjectURL(new Blob([data], { type: 'application/pdf' }));
+    const token = localStorage.getItem('akb_token');
+    const base = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const url = `${base}/invoices/${invoice.value.id}/pdf?token=${token}`;
     const a = document.createElement('a');
     a.href = url;
     a.download = `Invoice-${invoice.value.invoiceNo.replace(/\//g, '-')}.pdf`;
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setTimeout(() => document.body.removeChild(a), 1000);
   } catch (e) {
     showToast('Error: ' + (e.response?.data?.message || 'PDF generation failed'));
   } finally {
@@ -111,7 +111,11 @@ async function deleteInvoice() {
 }
 
 async function reload() { invoice.value = (await invoicesApi.get(route.params.id)).data; }
-function printInvoice() { window.print(); }
+function printInvoice() {
+  const token = localStorage.getItem('akb_token');
+  const base = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  window.open(`${base}/invoices/${invoice.value.id}/pdf?token=${token}`, '_blank');
+}
 
 const daysUntilDue = computed(() => {
   if (!invoice.value?.dueDate) return null;

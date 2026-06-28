@@ -45,15 +45,15 @@ function showToast(msg) { toast.value = msg; setTimeout(() => toast.value = '', 
 async function downloadPdf() {
   actionLoading.value = 'pdf';
   try {
-    const { data } = await quotationsApi.getPdf(q.value.id);
-    const url = URL.createObjectURL(new Blob([data], { type: 'application/pdf' }));
+    const token = localStorage.getItem('akb_token');
+    const base = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const url = `${base}/quotations/${q.value.id}/pdf?token=${token}`;
     const a = document.createElement('a');
     a.href = url;
     a.download = `Quotation-${q.value.quotationNo.replace(/\//g, '-')}.pdf`;
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setTimeout(() => document.body.removeChild(a), 1000);
   } catch (e) {
     showToast('Error: ' + (e.response?.data?.message || 'PDF generation failed'));
   } finally {
