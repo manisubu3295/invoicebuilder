@@ -12,7 +12,7 @@ const form = ref({
   companyName: '', registrationNo: '', address: '', phone: '', email: '', website: '',
   bankName: '', bankAccountNo: '', bankAccountName: '',
   currency: 'SGD', currencySymbol: 'S$', paymentTermsDays: 30, signatoryName: '', logoText: '',
-  sealImage: null, signatureImage: null,
+  logoImage: null, sealImage: null, signatureImage: null,
 });
 
 function pickImage(field) {
@@ -128,6 +128,23 @@ onMounted(async () => {
     <div class="card mb-5">
       <h2 class="section-label mb-5 pb-2 border-b border-gray-100 dark:border-slate-700">Company Information</h2>
       <div class="space-y-5">
+
+        <!-- Logo upload -->
+        <div class="flex items-start gap-5 p-4 rounded-xl bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700">
+          <div class="w-24 h-16 rounded-lg border-2 border-dashed border-gray-300 dark:border-slate-600 flex items-center justify-center bg-white dark:bg-slate-900 overflow-hidden shrink-0">
+            <img v-if="form.logoImage" :src="form.logoImage" alt="Logo preview" class="max-w-full max-h-full object-contain p-1"/>
+            <span v-else class="material-icons text-gray-300 dark:text-slate-600" style="font-size:28px">image</span>
+          </div>
+          <div class="flex-1">
+            <div class="input-label mb-1">Company Logo</div>
+            <p class="text-xs text-gray-400 dark:text-slate-500 mb-2">Appears on all PDF invoices, quotations and reports. PNG or JPG with transparent or white background recommended.</p>
+            <div class="flex gap-2">
+              <button type="button" @click="pickImage('logoImage')" class="btn-secondary text-xs">{{ form.logoImage ? 'Change Logo' : 'Upload Logo' }}</button>
+              <button v-if="form.logoImage" type="button" @click="form.logoImage = null" class="text-xs text-red-500 hover:text-red-700">Remove</button>
+            </div>
+          </div>
+        </div>
+
         <div class="input-group"><label class="input-label">Company Name *</label><input v-model="form.companyName" class="input-field" placeholder="e.g. AKB Transport Pte Ltd"/></div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div class="input-group"><label class="input-label">Registration / UEN</label><input v-model="form.registrationNo" class="input-field" placeholder="202300001Z"/></div>

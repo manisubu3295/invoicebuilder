@@ -13,6 +13,9 @@ export const useSettingsStore = defineStore('settings', () => {
     } catch {
       settings.value = { companyName: 'My Company', currencySymbol: 'S$', currency: 'SGD' };
     }
+    if (settings.value?.companyName) {
+      document.title = settings.value.companyName;
+    }
     return settings.value;
   }
 

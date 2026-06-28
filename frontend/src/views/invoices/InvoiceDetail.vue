@@ -224,7 +224,8 @@ onMounted(async () => {
             <div v-if="s.email" class="text-blue-600 text-xs">{{ s.email }}</div>
             <div v-if="s.phone" class="text-gray-600 text-xs">{{ s.phone }}</div>
           </div>
-          <div class="w-14 h-10 rounded flex items-center justify-center text-white font-bold text-xs" style="background:var(--md-primary-dark)">{{ logoText }}</div>
+          <img v-if="s.logoImage" :src="s.logoImage" alt="Logo" class="max-h-12 max-w-[110px] object-contain"/>
+          <div v-else class="w-14 h-10 rounded flex items-center justify-center text-white font-bold text-xs" style="background:var(--md-primary-dark)">{{ logoText }}</div>
         </div>
 
         <!-- Title + Bill To + Meta -->

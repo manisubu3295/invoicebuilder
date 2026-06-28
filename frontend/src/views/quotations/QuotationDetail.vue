@@ -125,7 +125,8 @@ onMounted(async () => {
               <span v-if="s.email" class="text-blue-600">{{ s.email }}</span>
             </div>
           </div>
-          <div class="w-16 h-12 rounded flex items-center justify-center text-white font-bold text-sm" style="background:var(--md-primary-dark)">{{ logoText }}</div>
+          <img v-if="s.logoImage" :src="s.logoImage" alt="Logo" class="max-h-12 max-w-[110px] object-contain"/>
+          <div v-else class="w-16 h-12 rounded flex items-center justify-center text-white font-bold text-sm" style="background:var(--md-primary-dark)">{{ logoText }}</div>
         </div>
 
         <!-- Title + Meta -->

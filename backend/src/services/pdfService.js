@@ -19,6 +19,9 @@ function formatCurrency(amount, symbol) {
 }
 
 function getLogoHtml(settings) {
+  if (settings.logoImage) {
+    return `<img src="${settings.logoImage}" alt="Logo" style="max-width:120px;max-height:70px;object-fit:contain;"/>`;
+  }
   const logoPath = path.join(__dirname, '../../assets/logo.png');
   if (fs.existsSync(logoPath)) {
     const b64 = fs.readFileSync(logoPath).toString('base64');
