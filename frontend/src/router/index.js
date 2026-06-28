@@ -54,7 +54,11 @@ router.beforeEach((to, from, next) => {
   const auth = useAuthStore();
 
   if (to.meta.public) return next();
-  if (!auth.isLoggedIn) return next('/login');
+
+  if (!auth.isLoggedIn) {
+    auth.logout(); // clear stale localStorage if token expired
+    return next('/login');
+  }
 
   if (to.meta.roles && !to.meta.roles.includes(auth.user?.role)) {
     return next('/dashboard');
