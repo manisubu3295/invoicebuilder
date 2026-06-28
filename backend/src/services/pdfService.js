@@ -98,14 +98,38 @@ function buildQuotationRows(items, symbol, cur) {
 }
 
 function buildInvoiceRows(items, symbol, cur, payments = []) {
-  const rows = items.sort((a, b) => a.sno - b.sno).map(item => `
+  let sno = 0;
+  const rowHtml = items.sort((a, b) => a.sno - b.sno).map(item => {
+    if (item.itemType === 'delivery') {
+      let dates = [];
+      try { dates = item.deliveryDates ? JSON.parse(item.deliveryDates) : []; } catch {}
+      if (!dates.length && item.deliveryDate) dates = [item.deliveryDate];
+
+      if (dates.length > 1) {
+        const unitPrice = parseFloat(item.unitPrice || 0);
+        return dates.map(date => {
+          sno++;
+          return `
+          <tr>
+            <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;color:#9ca3af;background:#fafafa;">${sno}</td>
+            <td style="border:1px solid #e5e7eb;padding:10px;"><strong>${item.jobDescription || ''}</strong></td>
+            <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;font-size:11px;color:#4b5563;">${formatDate(date)}</td>
+            <td style="border:1px solid #e5e7eb;padding:10px;text-align:right;font-size:11px;">1 &times; ${formatCurrency(unitPrice, symbol)}</td>
+            <td style="border:1px solid #e5e7eb;padding:10px;text-align:right;font-weight:bold;">${formatCurrency(unitPrice, symbol)}</td>
+          </tr>`;
+        }).join('');
+      }
+    }
+    sno++;
+    return `
       <tr>
-        <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;color:#9ca3af;background:#fafafa;">${item.sno}</td>
+        <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;color:#9ca3af;background:#fafafa;">${sno}</td>
         <td style="border:1px solid #e5e7eb;padding:10px;"><strong>${item.jobDescription || ''}</strong></td>
         ${buildItemPeriodCell(item)}
         ${buildItemRateCell(item, symbol)}
         <td style="border:1px solid #e5e7eb;padding:10px;text-align:right;font-weight:bold;">${formatCurrency(item.totalAmount, symbol)}</td>
-      </tr>`).join('');
+      </tr>`;
+  }).join('');
 
   const total = items.reduce((s,i)=>s+parseFloat(i.totalAmount||0),0);
   const paid = payments.reduce((s,p)=>s+parseFloat(p.amount||0),0);
@@ -131,7 +155,7 @@ function buildInvoiceRows(items, symbol, cur, payments = []) {
       <td style="border:1px solid #111827;padding:11px 10px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(balance, symbol)}</td>
     </tr>`;
 
-  return rows + totalRows;
+  return rowHtml + totalRows;
 }
 
 const baseStyle = `
