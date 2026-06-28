@@ -54,7 +54,13 @@ function calcPeriodText(item) {
 
 function buildItemPeriodCell(item) {
   if (item.itemType === 'delivery') {
-    return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;color:#4b5563;">${formatDate(item.deliveryDate)}</td>`;
+    let dates = [];
+    try { dates = item.deliveryDates ? JSON.parse(item.deliveryDates) : []; } catch {}
+    if (!dates.length && item.deliveryDate) dates = [item.deliveryDate];
+    const dateStr = dates.length
+      ? dates.map(d => formatDate(d)).join('<br/>')
+      : '—';
+    return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;color:#4b5563;line-height:1.6;">${dateStr}</td>`;
   }
   return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;color:#4b5563;">${calcPeriodText(item)}</td>`;
 }

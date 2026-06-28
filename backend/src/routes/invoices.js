@@ -83,20 +83,24 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       totalAmount, status: 'draft',
     });
 
-    const invoiceItems = items.map((item, idx) => ({
-      invoiceId: invoice.id,
-      sno: item.sno || idx + 1,
-      jobDescription: item.jobDescription,
-      itemType: item.itemType || 'service',
-      fromDate: item.fromDate,
-      toDate: item.toDate,
-      rate: item.rate,
-      rateType: item.rateType || 'per_week',
-      deliveryDate: item.deliveryDate,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      totalAmount: item.totalAmount,
-    }));
+    const invoiceItems = items.map((item, idx) => {
+      const dates = Array.isArray(item.deliveryDates) ? item.deliveryDates : [];
+      return {
+        invoiceId: invoice.id,
+        sno: item.sno || idx + 1,
+        jobDescription: item.jobDescription,
+        itemType: item.itemType || 'service',
+        fromDate: item.fromDate,
+        toDate: item.toDate,
+        rate: item.rate,
+        rateType: item.rateType || 'per_week',
+        deliveryDate: dates[0] || item.deliveryDate || null,
+        deliveryDates: dates.length ? JSON.stringify(dates) : null,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalAmount: item.totalAmount,
+      };
+    });
     await InvoiceItem.bulkCreate(invoiceItems);
 
     const full = await Invoice.findByPk(invoice.id, {
@@ -120,20 +124,24 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
     if (items) {
       await InvoiceItem.destroy({ where: { invoiceId: invoice.id } });
       const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
-      const invoiceItems = items.map((item, idx) => ({
-        invoiceId: invoice.id,
-        sno: item.sno || idx + 1,
-        jobDescription: item.jobDescription,
-        itemType: item.itemType || 'service',
-        fromDate: item.fromDate,
-        toDate: item.toDate,
-        rate: item.rate,
-        rateType: item.rateType || 'per_week',
-        deliveryDate: item.deliveryDate,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        totalAmount: item.totalAmount,
-      }));
+      const invoiceItems = items.map((item, idx) => {
+        const dates = Array.isArray(item.deliveryDates) ? item.deliveryDates : [];
+        return {
+          invoiceId: invoice.id,
+          sno: item.sno || idx + 1,
+          jobDescription: item.jobDescription,
+          itemType: item.itemType || 'service',
+          fromDate: item.fromDate,
+          toDate: item.toDate,
+          rate: item.rate,
+          rateType: item.rateType || 'per_week',
+          deliveryDate: dates[0] || item.deliveryDate || null,
+          deliveryDates: dates.length ? JSON.stringify(dates) : null,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalAmount: item.totalAmount,
+        };
+      });
       await InvoiceItem.bulkCreate(invoiceItems);
       await invoice.update({ date, dueDate, notes, status, totalAmount });
     } else {

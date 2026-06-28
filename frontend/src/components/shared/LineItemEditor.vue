@@ -16,6 +16,9 @@ const items = computed({
 const openIdx = ref(-1);
 const dropdownStyle = ref({});
 
+// Per-row date input state (not persisted in item, just for the add-date input)
+const dateInputs = ref({});
+
 function catalogSuggestions(row) {
   if (!props.catalog.length) return [];
   const q = (row.jobDescription || '').toLowerCase().trim();
@@ -63,7 +66,7 @@ function addRow(type = 'service') {
   items.value = [...items.value, {
     sno: items.value.length + 1, itemType: type, jobDescription: '',
     fromDate: '', toDate: '', rate: '', rateType: 'per_week',
-    deliveryDate: '', quantity: 1, unitPrice: '', totalAmount: 0,
+    deliveryDate: '', deliveryDates: [], quantity: 1, unitPrice: '', totalAmount: 0,
   }];
 }
 
@@ -86,9 +89,38 @@ function updateItem(i, field, value) {
   const updated = [...items.value];
   updated[i] = { ...updated[i], [field]: value };
   if (field === 'totalAmount') updated[i].totalAmount = parseFloat(value || 0);
-  else if (field === 'itemType') updated[i].totalAmount = 0;
+  else if (field === 'itemType') { updated[i].totalAmount = 0; updated[i].deliveryDates = []; }
   else updated[i].totalAmount = calcTotal(updated[i]);
   items.value = updated;
+}
+
+function addDeliveryDate(i) {
+  const dateVal = dateInputs.value[i];
+  if (!dateVal) return;
+  const updated = [...items.value];
+  const row = { ...updated[i] };
+  const existing = Array.isArray(row.deliveryDates) ? row.deliveryDates : [];
+  if (existing.includes(dateVal)) { dateInputs.value[i] = ''; return; }
+  row.deliveryDates = [...existing, dateVal].sort();
+  row.deliveryDate = row.deliveryDates[0];
+  updated[i] = row;
+  items.value = updated;
+  dateInputs.value[i] = '';
+}
+
+function removeDeliveryDate(i, dateVal) {
+  const updated = [...items.value];
+  const row = { ...updated[i] };
+  row.deliveryDates = (Array.isArray(row.deliveryDates) ? row.deliveryDates : []).filter(d => d !== dateVal);
+  row.deliveryDate = row.deliveryDates[0] || '';
+  updated[i] = row;
+  items.value = updated;
+}
+
+function fmtChipDate(d) {
+  if (!d) return '';
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 }
 
 const inputCls = 'w-full bg-transparent focus:outline-none focus:ring-1 focus:ring-blue-500 rounded px-1 py-0.5 text-sm';
@@ -110,80 +142,131 @@ const inputCls = 'w-full bg-transparent focus:outline-none focus:ring-1 focus:ri
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(item, i) in items" :key="i" class="border-b border-gray-100 hover:bg-gray-50"
-            :class="item.itemType === 'delivery' ? 'bg-blue-50/30' : ''">
+        <template v-for="(item, i) in items" :key="i">
+          <!-- Main row -->
+          <tr class="border-b border-gray-100 hover:bg-gray-50"
+              :class="[item.itemType === 'delivery' ? 'bg-blue-50/30' : '', item.itemType === 'delivery' ? 'border-b-0' : '']">
 
-          <!-- # / type toggle -->
-          <td class="px-2 py-2 text-center border-r border-gray-100">
-            <div class="text-gray-400 text-xs leading-none">{{ item.sno }}</div>
-            <button @click="updateItem(i,'itemType', item.itemType==='delivery'?'service':'delivery')"
-              class="text-[10px] font-bold px-1 rounded mt-1"
-              :class="item.itemType==='delivery' ? 'text-blue-700 bg-blue-100' : 'text-gray-500 bg-gray-100'"
-              :title="item.itemType==='delivery' ? 'Switch to Service' : 'Switch to Delivery'">
-              {{ item.itemType === 'delivery' ? 'DEL' : 'SVC' }}
-            </button>
-          </td>
+            <!-- # / type toggle -->
+            <td class="px-2 py-2 text-center border-r border-gray-100" :rowspan="item.itemType === 'delivery' ? 2 : 1">
+              <div class="text-gray-400 text-xs leading-none">{{ item.sno }}</div>
+              <button @click="updateItem(i,'itemType', item.itemType==='delivery'?'service':'delivery')"
+                class="text-[10px] font-bold px-1 rounded mt-1"
+                :class="item.itemType==='delivery' ? 'text-blue-700 bg-blue-100' : 'text-gray-500 bg-gray-100'"
+                :title="item.itemType==='delivery' ? 'Switch to Service' : 'Switch to Delivery'">
+                {{ item.itemType === 'delivery' ? 'DEL' : 'SVC' }}
+              </button>
+            </td>
 
-          <!-- Description — catalog autocomplete via Teleport -->
-          <td class="px-2 py-2 border-r border-gray-100">
-            <input
-              :value="item.jobDescription"
-              @input="onDescInput(i, $event.target.value)"
-              @focus="onDescFocus(i, $event)"
-              @blur="onDescBlur(i)"
-              :class="inputCls"
-              placeholder="Search catalog or type custom…"
-              autocomplete="off"
-            />
-          </td>
+            <!-- Description — catalog autocomplete via Teleport -->
+            <td class="px-2 py-2 border-r border-gray-100" :colspan="item.itemType === 'delivery' ? 3 : 1">
+              <input
+                :value="item.jobDescription"
+                @input="onDescInput(i, $event.target.value)"
+                @focus="onDescFocus(i, $event)"
+                @blur="onDescBlur(i)"
+                :class="inputCls"
+                placeholder="Search catalog or type custom…"
+                autocomplete="off"
+              />
+            </td>
 
-          <!-- Date / From -->
-          <td class="px-2 py-2 border-r border-gray-100">
-            <input v-if="item.itemType !== 'delivery'" type="date" :value="item.fromDate"
-              @input="updateItem(i,'fromDate',$event.target.value)" :class="inputCls + ' text-xs'"/>
-            <input v-else type="date" :value="item.deliveryDate"
-              @input="updateItem(i,'deliveryDate',$event.target.value)" :class="inputCls + ' text-xs'"/>
-          </td>
+            <!-- Date / From (service only) -->
+            <template v-if="item.itemType !== 'delivery'">
+              <td class="px-2 py-2 border-r border-gray-100">
+                <input type="date" :value="item.fromDate"
+                  @input="updateItem(i,'fromDate',$event.target.value)"
+                  :class="inputCls + ' text-xs'"
+                  :style="!item.fromDate ? 'border:1px solid #fca5a5;border-radius:4px;' : ''"/>
+              </td>
 
-          <!-- To Date -->
-          <td class="px-2 py-2 border-r border-gray-100">
-            <input v-if="item.itemType !== 'delivery'" type="date" :value="item.toDate"
-              @input="updateItem(i,'toDate',$event.target.value)" :class="inputCls + ' text-xs'"/>
-            <span v-else class="text-gray-300 text-xs px-1">—</span>
-          </td>
+              <!-- To Date -->
+              <td class="px-2 py-2 border-r border-gray-100">
+                <input type="date" :value="item.toDate"
+                  @input="updateItem(i,'toDate',$event.target.value)"
+                  :class="inputCls + ' text-xs'"
+                  :style="!item.toDate ? 'border:1px solid #fca5a5;border-radius:4px;' : ''"/>
+              </td>
 
-          <!-- Rate / Price -->
-          <td class="px-2 py-2 border-r border-gray-100">
-            <input type="number" :value="item.itemType==='delivery' ? item.unitPrice : item.rate"
-              @input="updateItem(i, item.itemType==='delivery' ? 'unitPrice' : 'rate', $event.target.value)"
-              :class="inputCls + ' text-right'" placeholder="0.00"/>
-          </td>
+              <!-- Rate -->
+              <td class="px-2 py-2 border-r border-gray-100">
+                <input type="number" :value="item.rate"
+                  @input="updateItem(i, 'rate', $event.target.value)"
+                  :class="inputCls + ' text-right'" placeholder="0.00"/>
+              </td>
 
-          <!-- Per / Qty -->
-          <td class="px-2 py-2 border-r border-gray-100">
-            <select v-if="item.itemType !== 'delivery'" :value="item.rateType"
-              @change="updateItem(i,'rateType',$event.target.value)"
-              class="w-full bg-transparent text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 rounded py-0.5">
-              <option value="per_week">Per Week</option>
-              <option value="per_day">Per Day</option>
-            </select>
-            <input v-else type="number" :value="item.quantity"
-              @input="updateItem(i,'quantity',$event.target.value)"
-              :class="inputCls + ' text-right'" placeholder="Qty" min="0" step="0.001"/>
-          </td>
+              <!-- Per -->
+              <td class="px-2 py-2 border-r border-gray-100">
+                <select :value="item.rateType"
+                  @change="updateItem(i,'rateType',$event.target.value)"
+                  class="w-full bg-transparent text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 rounded py-0.5">
+                  <option value="per_week">Per Week</option>
+                  <option value="per_day">Per Day</option>
+                </select>
+              </td>
+            </template>
 
-          <!-- Amount -->
-          <td class="px-2 py-2 border-r border-gray-100">
-            <input type="number" :value="item.totalAmount"
-              @input="updateItem(i,'totalAmount',$event.target.value)"
-              :class="inputCls + ' text-right font-semibold'" placeholder="0.00"/>
-          </td>
+            <!-- Delivery: price + qty -->
+            <template v-else>
+              <!-- Rate / Price -->
+              <td class="px-2 py-2 border-r border-gray-100">
+                <input type="number" :value="item.unitPrice"
+                  @input="updateItem(i, 'unitPrice', $event.target.value)"
+                  :class="inputCls + ' text-right'" placeholder="0.00"/>
+              </td>
 
-          <!-- Remove -->
-          <td class="px-1 py-2 text-center">
-            <button @click="removeRow(i)" class="text-gray-300 hover:text-red-500 text-lg leading-none font-bold">×</button>
-          </td>
-        </tr>
+              <!-- Qty -->
+              <td class="px-2 py-2 border-r border-gray-100">
+                <input type="number" :value="item.quantity"
+                  @input="updateItem(i,'quantity',$event.target.value)"
+                  :class="inputCls + ' text-right'" placeholder="Qty" min="0" step="0.001"/>
+              </td>
+            </template>
+
+            <!-- Amount -->
+            <td class="px-2 py-2 border-r border-gray-100">
+              <input type="number" :value="item.totalAmount"
+                @input="updateItem(i,'totalAmount',$event.target.value)"
+                :class="inputCls + ' text-right font-semibold'" placeholder="0.00"/>
+            </td>
+
+            <!-- Remove -->
+            <td class="px-1 py-2 text-center" :rowspan="item.itemType === 'delivery' ? 2 : 1">
+              <button @click="removeRow(i)" class="text-gray-300 hover:text-red-500 text-lg leading-none font-bold">×</button>
+            </td>
+          </tr>
+
+          <!-- Delivery date chips row -->
+          <tr v-if="item.itemType === 'delivery'" class="border-b border-gray-100 bg-blue-50/30">
+            <td colspan="6" class="px-3 pb-2.5 pt-1">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-[10px] font-semibold text-blue-600 uppercase tracking-wide mr-1">Dates</span>
+
+                <!-- Existing date chips -->
+                <span v-for="d in (item.deliveryDates || [])" :key="d"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                  {{ fmtChipDate(d) }}
+                  <button @click="removeDeliveryDate(i, d)"
+                    class="text-blue-400 hover:text-red-500 leading-none font-bold text-sm">&times;</button>
+                </span>
+
+                <!-- Empty state hint -->
+                <span v-if="!item.deliveryDates?.length"
+                  class="text-xs text-red-400 italic">Select at least one date</span>
+
+                <!-- Add date input -->
+                <div class="flex items-center gap-1 ml-auto">
+                  <input type="date" v-model="dateInputs[i]"
+                    @keydown.enter.prevent="addDeliveryDate(i)"
+                    class="text-xs border border-gray-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"/>
+                  <button @click="addDeliveryDate(i)"
+                    class="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+                    title="Add date">+ Add</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+        </template>
       </tbody>
     </table>
   </div>

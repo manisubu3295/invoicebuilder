@@ -16,6 +16,7 @@ module.exports = (sequelize, DataTypes) => {
     quantity: { type: DataTypes.DECIMAL(10, 3) },
     unitPrice: { type: DataTypes.DECIMAL(10, 2) },
     deliveryDate: { type: DataTypes.DATEONLY },
+    deliveryDates: { type: DataTypes.TEXT, allowNull: true },
     deliveryLogId: { type: DataTypes.UUID },
     deliveredBy: { type: DataTypes.STRING },
   }, {

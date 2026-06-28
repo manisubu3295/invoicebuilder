@@ -29,7 +29,12 @@ function fmtDateLong(d) {
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase();
 }
 function calcPeriod(item) {
-  if (item.itemType === 'delivery') return fmtDate(item.deliveryDate);
+  if (item.itemType === 'delivery') {
+    let dates = [];
+    try { dates = item.deliveryDates ? JSON.parse(item.deliveryDates) : []; } catch {}
+    if (!dates.length && item.deliveryDate) dates = [item.deliveryDate];
+    return dates.map(d => fmtDate(d)).join(', ') || '—';
+  }
   if (!item.fromDate || !item.toDate) return '';
   const days = Math.round((new Date(item.toDate) - new Date(item.fromDate)) / 86400000) + 1;
   if (item.rateType === 'per_day') return `${days}d`;

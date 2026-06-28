@@ -14,7 +14,7 @@ const sym = computed(() => settingsStore.settings?.currencySymbol || 'S$');
 
 const form = ref({
   clientId: '', date: new Date().toISOString().split('T')[0], dueDate: '', notes: '',
-  items: [{ sno: 1, itemType: 'service', jobDescription: '', fromDate: '', toDate: '', rate: '', rateType: 'per_week', deliveryDate: '', quantity: 1, unitPrice: '', totalAmount: 0 }],
+  items: [{ sno: 1, itemType: 'service', jobDescription: '', fromDate: '', toDate: '', rate: '', rateType: 'per_week', deliveryDate: '', deliveryDates: [], quantity: 1, unitPrice: '', totalAmount: 0 }],
 });
 const clients = ref([]);
 const catalog = ref([]);
@@ -32,13 +32,32 @@ onMounted(async () => {
     const { data } = await invoicesApi.get(route.params.id);
     form.value = {
       clientId: data.clientId, date: data.date, dueDate: data.dueDate || '', notes: data.notes || '',
-      items: (data.items || []).map(i => ({ ...i, itemType: i.itemType || 'service', deliveryDate: i.deliveryDate || '', quantity: i.quantity || 1, unitPrice: i.unitPrice || '' })),
+      items: (data.items || []).map(i => {
+        let deliveryDates = [];
+        try { deliveryDates = i.deliveryDates ? JSON.parse(i.deliveryDates) : []; } catch {}
+        if (!deliveryDates.length && i.deliveryDate) deliveryDates = [i.deliveryDate];
+        return { ...i, itemType: i.itemType || 'service', deliveryDate: i.deliveryDate || '', deliveryDates, quantity: i.quantity || 1, unitPrice: i.unitPrice || '' };
+      }),
     };
   }
 });
 
 async function submit() {
-  loading.value = true; error.value = '';
+  error.value = '';
+  for (const item of form.value.items) {
+    if (item.itemType === 'delivery') {
+      if (!item.deliveryDates?.length) {
+        error.value = 'Please add at least one delivery date for each delivery item.';
+        return;
+      }
+    } else {
+      if (!item.fromDate || !item.toDate) {
+        error.value = 'Please fill in From Date and To Date for all service items.';
+        return;
+      }
+    }
+  }
+  loading.value = true;
   try {
     let inv;
     if (isEdit.value) inv = (await invoicesApi.update(route.params.id, form.value)).data;
