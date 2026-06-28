@@ -50,10 +50,18 @@ async function downloadPdf() {
   try {
     const { data } = await invoicesApi.getPdf(invoice.value.id);
     const url = URL.createObjectURL(new Blob([data], { type: 'application/pdf' }));
-    const a = document.createElement('a'); a.href = url;
-    a.download = `Invoice-${invoice.value.invoiceNo.replace(/\//g, '-')}.pdf`; a.click();
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Invoice-${invoice.value.invoiceNo.replace(/\//g, '-')}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  } finally { actionLoading.value = ''; }
+  } catch (e) {
+    showToast('Error: ' + (e.response?.data?.message || 'PDF generation failed'));
+  } finally {
+    actionLoading.value = '';
+  }
 }
 
 async function sendEmail() {
@@ -214,7 +222,7 @@ onMounted(async () => {
     </div>
 
     <!-- Document -->
-    <div class="bg-white rounded relative overflow-hidden mb-4" style="box-shadow:var(--md-z2)">
+    <div class="bg-white rounded relative overflow-hidden print:overflow-visible mb-4" style="box-shadow:var(--md-z2)">
       <div v-if="invoice.status === 'paid'" class="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div class="text-green-500 text-7xl font-black uppercase tracking-widest opacity-5 rotate-[-30deg] select-none">PAID</div>
       </div>
@@ -317,7 +325,7 @@ onMounted(async () => {
     </div>
 
     <!-- Payment History -->
-    <div v-if="invoice.payments?.length" class="card p-0 print:hidden">
+    <div v-if="invoice.payments?.length" class="card p-0">
       <div class="card-header"><span class="card-title">Payment History</span></div>
       <div v-for="p in invoice.payments" :key="p.id" class="flex justify-between text-sm py-3 px-5 border-b border-gray-100 last:border-0">
         <span class="text-gray-600">{{ fmtDateLong(p.paymentDate) }} <span class="text-gray-400">· {{ p.method }}</span></span>

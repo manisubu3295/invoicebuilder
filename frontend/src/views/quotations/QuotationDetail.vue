@@ -47,10 +47,18 @@ async function downloadPdf() {
   try {
     const { data } = await quotationsApi.getPdf(q.value.id);
     const url = URL.createObjectURL(new Blob([data], { type: 'application/pdf' }));
-    const a = document.createElement('a'); a.href = url;
-    a.download = `Quotation-${q.value.quotationNo.replace(/\//g, '-')}.pdf`; a.click();
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Quotation-${q.value.quotationNo.replace(/\//g, '-')}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  } finally { actionLoading.value = ''; }
+  } catch (e) {
+    showToast('Error: ' + (e.response?.data?.message || 'PDF generation failed'));
+  } finally {
+    actionLoading.value = '';
+  }
 }
 
 async function sendEmail() {
