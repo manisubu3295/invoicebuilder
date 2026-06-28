@@ -25,7 +25,7 @@ const filtered = computed(() => {
 const totalPending = computed(() => expenses.value.filter(e => e.status === 'pending').reduce((s, e) => s + parseFloat(e.amount || 0), 0));
 const totalApproved = computed(() => expenses.value.filter(e => e.status === 'approved').reduce((s, e) => s + parseFloat(e.amount || 0), 0));
 
-function fmtDate(d) { return d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'; }
+function fmtDate(d) { if (!d) return '—'; const dt = new Date(d); return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); }
 function fmtSGD(v) { return `S$${parseFloat(v || 0).toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
 function catLabel(c) {
   const map = { fuel_petrol: 'Petrol', fuel_diesel: 'Diesel', toll: 'Toll', parking: 'Parking', maintenance: 'Maintenance', other: 'Other' };

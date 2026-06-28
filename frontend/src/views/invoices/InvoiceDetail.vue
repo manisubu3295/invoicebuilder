@@ -22,11 +22,13 @@ const logoText = computed(() => (s.value.logoText || s.value.companyName || 'CO'
 function fmt(v) { return `${sym.value}${parseFloat(v || 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
 function fmtDate(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? '' : dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
 }
 function fmtDateLong(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase();
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? '' : dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase();
 }
 function calcPeriod(item) {
   if (item.itemType === 'delivery') {

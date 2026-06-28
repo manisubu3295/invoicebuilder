@@ -182,7 +182,8 @@ function fleetCellClass(dateStr) {
 
 function fmtDate(d) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 watch(tab, (newTab) => {
