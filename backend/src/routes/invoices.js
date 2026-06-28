@@ -152,7 +152,7 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
 router.get('/:id/pdf', async (req, res) => {
   try {
     const invoice = await Invoice.findByPk(req.params.id, {
-      include: [{ model: Client, as: 'client' }, { model: InvoiceItem, as: 'items' }],
+      include: [{ model: Client, as: 'client' }, { model: InvoiceItem, as: 'items' }, { model: Payment, as: 'payments' }],
     });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
 
@@ -171,7 +171,7 @@ router.get('/:id/pdf', async (req, res) => {
 router.post('/:id/send-email', rbac('admin', 'staff'), async (req, res) => {
   try {
     const invoice = await Invoice.findByPk(req.params.id, {
-      include: [{ model: Client, as: 'client' }, { model: InvoiceItem, as: 'items' }],
+      include: [{ model: Client, as: 'client' }, { model: InvoiceItem, as: 'items' }, { model: Payment, as: 'payments' }],
     });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
     if (!invoice.client.email) return res.status(400).json({ message: 'Client has no email address' });

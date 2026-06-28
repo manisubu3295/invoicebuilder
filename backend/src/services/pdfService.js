@@ -83,34 +83,49 @@ function buildQuotationRows(items, symbol, cur) {
     </tr>`;
 }
 
-function buildInvoiceRows(items, symbol, cur) {
+function buildInvoiceRows(items, symbol, cur, payments = []) {
   const rows = items.sort((a, b) => a.sno - b.sno).map(item => `
       <tr>
-        <td style="border:1px solid #e5e7eb;padding:8px;text-align:center;color:#9ca3af;background:#fafafa;">${item.sno}</td>
-        <td style="border:1px solid #e5e7eb;padding:8px;"><strong>${item.jobDescription || ''}</strong></td>
+        <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;color:#9ca3af;background:#fafafa;">${item.sno}</td>
+        <td style="border:1px solid #e5e7eb;padding:10px;"><strong>${item.jobDescription || ''}</strong></td>
         ${buildItemPeriodCell(item)}
         ${buildItemRateCell(item, symbol)}
-        <td style="border:1px solid #e5e7eb;padding:8px;text-align:right;font-weight:bold;">${formatCurrency(item.totalAmount, symbol)}</td>
+        <td style="border:1px solid #e5e7eb;padding:10px;text-align:right;font-weight:bold;">${formatCurrency(item.totalAmount, symbol)}</td>
       </tr>`).join('');
 
   const total = items.reduce((s,i)=>s+parseFloat(i.totalAmount||0),0);
-  return rows + `
+  const paid = payments.reduce((s,p)=>s+parseFloat(p.amount||0),0);
+  const balance = Math.max(0, total - paid);
+
+  let totalRows = `
     <tr>
       <td colspan="4" style="border:1px solid #e5e7eb;padding:9px 10px;text-align:right;color:#6b7280;font-size:11px;">Subtotal</td>
       <td style="border:1px solid #e5e7eb;padding:9px 10px;text-align:right;color:#6b7280;font-size:11px;">${formatCurrency(total, symbol)}</td>
-    </tr>
-    <tr style="background:#111827;color:#fff;">
-      <td colspan="4" style="border:1px solid #111827;padding:9px 10px;text-align:right;font-weight:bold;letter-spacing:1px;">AMOUNT DUE (${cur})</td>
-      <td style="border:1px solid #111827;padding:9px 10px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(total, symbol)}</td>
     </tr>`;
+
+  if (paid > 0) {
+    totalRows += `
+    <tr>
+      <td colspan="4" style="border:1px solid #e5e7eb;padding:9px 10px;text-align:right;color:#16a34a;font-size:11px;">Amount Paid</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;text-align:right;color:#16a34a;font-size:11px;">(${formatCurrency(paid, symbol)})</td>
+    </tr>`;
+  }
+
+  totalRows += `
+    <tr style="background:#111827;color:#fff;">
+      <td colspan="4" style="border:1px solid #111827;padding:11px 10px;text-align:right;font-weight:bold;letter-spacing:1px;">${balance === 0 ? 'PAID IN FULL' : `BALANCE DUE (${cur})`}</td>
+      <td style="border:1px solid #111827;padding:11px 10px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(balance, symbol)}</td>
+    </tr>`;
+
+  return rows + totalRows;
 }
 
 const baseStyle = `
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #1f2937; padding: 32px; line-height: 1.4; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #1f2937; padding: 48px; line-height: 1.5; }
   a { color: #1d4ed8; text-decoration: none; }
   table { width:100%; border-collapse:collapse; }
-  thead th { border:1px solid #111827; padding:8px 10px; background:#111827; color:#fff; font-size:11px; letter-spacing:0.5px; font-weight:600; }
+  thead th { border:1px solid #111827; padding:10px; background:#111827; color:#fff; font-size:11px; letter-spacing:0.5px; font-weight:600; }
 `;
 
 function buildQuotationHtml(quotation, client, items, settings = {}) {
@@ -259,7 +274,7 @@ function buildInvoiceHtml(invoice, client, items, settings = {}) {
       <th style="width:16%;text-align:right;">RATE</th>
       <th style="width:17%;text-align:right;">AMOUNT (${cur})</th>
     </tr></thead>
-    <tbody>${buildInvoiceRows(items, sym, cur)}</tbody>
+    <tbody>${buildInvoiceRows(items, sym, cur, invoice.payments || [])}</tbody>
   </table>
 
   ${invoice.notes ? `
@@ -316,14 +331,20 @@ function buildDeliveryInvoiceHtml(invoice, client, items, settings = {}) {
     </tr>`).join('');
 
   const total = items.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0);
+  const paid = (invoice.payments || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+  const balance = Math.max(0, total - paid);
   const totalRows = `
     <tr>
       <td colspan="5" style="border:1px solid #e5e7eb;padding:9px;text-align:right;color:#6b7280;font-size:11px;">Subtotal</td>
       <td style="border:1px solid #e5e7eb;padding:9px;text-align:right;color:#6b7280;font-size:11px;">${formatCurrency(total, sym)}</td>
     </tr>
+    ${paid > 0 ? `<tr>
+      <td colspan="5" style="border:1px solid #e5e7eb;padding:9px;text-align:right;color:#16a34a;font-size:11px;">Amount Paid</td>
+      <td style="border:1px solid #e5e7eb;padding:9px;text-align:right;color:#16a34a;font-size:11px;">(${formatCurrency(paid, sym)})</td>
+    </tr>` : ''}
     <tr style="background:#111827;color:#fff;">
-      <td colspan="5" style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;letter-spacing:1px;">AMOUNT DUE (${cur})</td>
-      <td style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(total, sym)}</td>
+      <td colspan="5" style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;letter-spacing:1px;">${balance === 0 ? 'PAID IN FULL' : `BALANCE DUE (${cur})`}</td>
+      <td style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(balance, sym)}</td>
     </tr>`;
 
   const period = invoice.periodStart && invoice.periodEnd
@@ -422,7 +443,7 @@ async function generatePDF(html, filename) {
   await page.pdf({
     path: outputPath,
     format: 'A4',
-    margin: { top: '12mm', right: '12mm', bottom: '12mm', left: '12mm' },
+    margin: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
     printBackground: true,
   });
   await browser.close();
@@ -438,7 +459,7 @@ async function generatePDFBuffer(html) {
   await page.setContent(html, { waitUntil: 'networkidle0' });
   const buffer = await page.pdf({
     format: 'A4',
-    margin: { top: '12mm', right: '12mm', bottom: '12mm', left: '12mm' },
+    margin: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
     printBackground: true,
   });
   await browser.close();
