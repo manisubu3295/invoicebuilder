@@ -103,6 +103,8 @@ function addDeliveryDate(i) {
   if (existing.includes(dateVal)) { dateInputs.value[i] = ''; return; }
   row.deliveryDates = [...existing, dateVal].sort();
   row.deliveryDate = row.deliveryDates[0];
+  row.quantity = row.deliveryDates.length;
+  row.totalAmount = calcTotal(row);
   updated[i] = row;
   items.value = updated;
   dateInputs.value[i] = '';
@@ -113,6 +115,8 @@ function removeDeliveryDate(i, dateVal) {
   const row = { ...updated[i] };
   row.deliveryDates = (Array.isArray(row.deliveryDates) ? row.deliveryDates : []).filter(d => d !== dateVal);
   row.deliveryDate = row.deliveryDates[0] || '';
+  row.quantity = row.deliveryDates.length;
+  row.totalAmount = calcTotal(row);
   updated[i] = row;
   items.value = updated;
 }
