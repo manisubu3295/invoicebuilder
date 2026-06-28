@@ -112,9 +112,7 @@ async function deleteInvoice() {
 
 async function reload() { invoice.value = (await invoicesApi.get(route.params.id)).data; }
 function printInvoice() {
-  const token = localStorage.getItem('akb_token');
-  const base = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-  window.open(`${base}/invoices/${invoice.value.id}/pdf?token=${token}`, '_blank');
+  window.print();
 }
 
 const daysUntilDue = computed(() => {
@@ -342,8 +340,9 @@ onMounted(async () => {
 <style>
 @media print {
   aside, header, nav, [data-topbar] { display: none !important; }
-  body, html { background: white !important; }
-  .page-container { max-width: 100% !important; padding: 0 !important; }
+  body, html { background: white !important; margin: 0 !important; }
+  .page-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
   .print\:hidden { display: none !important; }
+  .print\:overflow-visible { overflow: visible !important; }
 }
 </style>
