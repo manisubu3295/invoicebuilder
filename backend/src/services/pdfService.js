@@ -46,9 +46,9 @@ function calcPeriodText(item) {
 
 function buildItemPeriodCell(item) {
   if (item.itemType === 'delivery') {
-    return `<td style="border:1px solid #e5e7eb;padding:10px;text-align:center;font-size:11px;color:#4b5563;">${formatDate(item.deliveryDate)}</td>`;
+    return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;color:#4b5563;">${formatDate(item.deliveryDate)}</td>`;
   }
-  return `<td style="border:1px solid #e5e7eb;padding:10px;text-align:center;font-size:11px;color:#4b5563;">${calcPeriodText(item)}</td>`;
+  return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;color:#4b5563;">${calcPeriodText(item)}</td>`;
 }
 
 function buildItemRateCell(item, symbol) {
@@ -56,12 +56,12 @@ function buildItemRateCell(item, symbol) {
     const qty = parseFloat(item.quantity || 0);
     const price = parseFloat(item.unitPrice || 0);
     const qtyStr = qty.toFixed(3).replace(/\.?0+$/, '');
-    return `<td style="border:1px solid #e5e7eb;padding:10px;text-align:right;font-size:11px;">
+    return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:right;font-size:11px;">
       ${qty ? `${qtyStr} &times; ${formatCurrency(price, symbol)}` : '—'}
     </td>`;
   }
   const rateUnit = item.rateType === 'per_day' ? '/day' : '/week';
-  return `<td style="border:1px solid #e5e7eb;padding:10px;text-align:right;">
+  return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:right;">
     ${item.rate ? `${formatCurrency(item.rate, symbol)}<span style="font-size:10px;color:#9ca3af;">${rateUnit}</span>` : '—'}
   </td>`;
 }
@@ -69,28 +69,28 @@ function buildItemRateCell(item, symbol) {
 function buildQuotationRows(items, symbol, cur) {
   const rows = items.sort((a, b) => a.sno - b.sno).map(item => `
       <tr>
-        <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;color:#9ca3af;background:#fafafa;">${item.sno}</td>
-        <td style="border:1px solid #e5e7eb;padding:10px;"><strong>${item.jobDescription || ''}</strong></td>
+        <td style="border:1px solid #e5e7eb;padding:8px;text-align:center;color:#9ca3af;background:#fafafa;">${item.sno}</td>
+        <td style="border:1px solid #e5e7eb;padding:8px;"><strong>${item.jobDescription || ''}</strong></td>
         ${buildItemPeriodCell(item)}
         ${buildItemRateCell(item, symbol)}
-        <td style="border:1px solid #e5e7eb;padding:10px;text-align:right;font-weight:bold;">${formatCurrency(item.totalAmount, symbol)}</td>
+        <td style="border:1px solid #e5e7eb;padding:8px;text-align:right;font-weight:bold;">${formatCurrency(item.totalAmount, symbol)}</td>
       </tr>`).join('');
 
   return rows + `
     <tr style="background:#111827;color:#fff;">
-      <td colspan="4" style="border:1px solid #111827;padding:11px 10px;text-align:right;font-weight:bold;letter-spacing:1px;">TOTAL AMOUNT (${cur})</td>
-      <td style="border:1px solid #111827;padding:11px 10px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(items.reduce((s,i)=>s+parseFloat(i.totalAmount||0),0), symbol)}</td>
+      <td colspan="4" style="border:1px solid #111827;padding:9px 10px;text-align:right;font-weight:bold;letter-spacing:1px;">TOTAL AMOUNT (${cur})</td>
+      <td style="border:1px solid #111827;padding:9px 10px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(items.reduce((s,i)=>s+parseFloat(i.totalAmount||0),0), symbol)}</td>
     </tr>`;
 }
 
 function buildInvoiceRows(items, symbol, cur) {
   const rows = items.sort((a, b) => a.sno - b.sno).map(item => `
       <tr>
-        <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;color:#9ca3af;background:#fafafa;">${item.sno}</td>
-        <td style="border:1px solid #e5e7eb;padding:10px;"><strong>${item.jobDescription || ''}</strong></td>
+        <td style="border:1px solid #e5e7eb;padding:8px;text-align:center;color:#9ca3af;background:#fafafa;">${item.sno}</td>
+        <td style="border:1px solid #e5e7eb;padding:8px;"><strong>${item.jobDescription || ''}</strong></td>
         ${buildItemPeriodCell(item)}
         ${buildItemRateCell(item, symbol)}
-        <td style="border:1px solid #e5e7eb;padding:10px;text-align:right;font-weight:bold;">${formatCurrency(item.totalAmount, symbol)}</td>
+        <td style="border:1px solid #e5e7eb;padding:8px;text-align:right;font-weight:bold;">${formatCurrency(item.totalAmount, symbol)}</td>
       </tr>`).join('');
 
   const total = items.reduce((s,i)=>s+parseFloat(i.totalAmount||0),0);
@@ -100,17 +100,17 @@ function buildInvoiceRows(items, symbol, cur) {
       <td style="border:1px solid #e5e7eb;padding:9px 10px;text-align:right;color:#6b7280;font-size:11px;">${formatCurrency(total, symbol)}</td>
     </tr>
     <tr style="background:#111827;color:#fff;">
-      <td colspan="4" style="border:1px solid #111827;padding:11px 10px;text-align:right;font-weight:bold;letter-spacing:1px;">AMOUNT DUE (${cur})</td>
-      <td style="border:1px solid #111827;padding:11px 10px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(total, symbol)}</td>
+      <td colspan="4" style="border:1px solid #111827;padding:9px 10px;text-align:right;font-weight:bold;letter-spacing:1px;">AMOUNT DUE (${cur})</td>
+      <td style="border:1px solid #111827;padding:9px 10px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(total, symbol)}</td>
     </tr>`;
 }
 
 const baseStyle = `
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #1f2937; padding: 48px; line-height: 1.5; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #1f2937; padding: 32px; line-height: 1.4; }
   a { color: #1d4ed8; text-decoration: none; }
   table { width:100%; border-collapse:collapse; }
-  thead th { border:1px solid #111827; padding:10px; background:#111827; color:#fff; font-size:11px; letter-spacing:0.5px; font-weight:600; }
+  thead th { border:1px solid #111827; padding:8px 10px; background:#111827; color:#fff; font-size:11px; letter-spacing:0.5px; font-weight:600; }
 `;
 
 function buildQuotationHtml(quotation, client, items, settings = {}) {
@@ -422,7 +422,7 @@ async function generatePDF(html, filename) {
   await page.pdf({
     path: outputPath,
     format: 'A4',
-    margin: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
+    margin: { top: '12mm', right: '12mm', bottom: '12mm', left: '12mm' },
     printBackground: true,
   });
   await browser.close();
@@ -438,7 +438,7 @@ async function generatePDFBuffer(html) {
   await page.setContent(html, { waitUntil: 'networkidle0' });
   const buffer = await page.pdf({
     format: 'A4',
-    margin: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
+    margin: { top: '12mm', right: '12mm', bottom: '12mm', left: '12mm' },
     printBackground: true,
   });
   await browser.close();
