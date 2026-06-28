@@ -161,7 +161,7 @@ router.get('/:id/pdf', async (req, res) => {
     await invoice.update({ pdfPath });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="Invoice-${invoice.invoiceNo.replace(/\//g, '-')}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="Invoice-${invoice.invoiceNo.replace(/\//g, '-')}.pdf"`);
     fs.createReadStream(pdfPath).pipe(res);
   } catch (err) {
     res.status(500).json({ message: err.message });

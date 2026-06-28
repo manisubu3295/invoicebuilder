@@ -129,7 +129,7 @@ router.get('/:id/pdf', async (req, res) => {
     const settings = await CompanySettings.findOne() || {};
     const pdfPath = await generateQuotationPDF(q, q.client, q.items, settings);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="Quotation-${q.quotationNo.replace(/\//g, '-')}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="Quotation-${q.quotationNo.replace(/\//g, '-')}.pdf"`);
     fs.createReadStream(pdfPath).pipe(res);
   } catch (err) {
     res.status(500).json({ message: err.message });
