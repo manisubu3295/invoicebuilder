@@ -71,9 +71,18 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }
 // Serve built frontend in production (same-origin, no CORS needed)
 if (isProd) {
   const distPath = path.join(__dirname, '../../frontend/dist');
-  app.use(express.static(distPath, { maxAge: '7d', etag: true }));
+  // Hashed assets (/assets/*) — cache immutably since hash changes on every build
+  app.use('/assets', express.static(path.join(distPath, 'assets'), {
+    maxAge: '1y', immutable: true,
+  }));
+  // Everything else (index.html, favicon, etc.) — never cache so browsers always get the latest HTML
+  app.use(express.static(distPath, {
+    maxAge: 0,
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate'),
+  }));
   // SPA fallback — all non-API routes serve index.html
   app.get('/{*path}', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
