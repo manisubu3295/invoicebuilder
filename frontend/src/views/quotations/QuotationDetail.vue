@@ -42,23 +42,10 @@ function rateLabel(item) {
 
 function showToast(msg) { toast.value = msg; setTimeout(() => toast.value = '', 3000); }
 
-async function downloadPdf() {
-  actionLoading.value = 'pdf';
-  try {
-    const token = localStorage.getItem('akb_token');
-    const base = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-    const url = `${base}/quotations/${q.value.id}/pdf?token=${token}`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Quotation-${q.value.quotationNo.replace(/\//g, '-')}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => document.body.removeChild(a), 1000);
-  } catch (e) {
-    showToast('Error: ' + (e.response?.data?.message || 'PDF generation failed'));
-  } finally {
-    actionLoading.value = '';
-  }
+function viewPdf() {
+  const token = localStorage.getItem('akb_token');
+  const base = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  window.open(`${base}/quotations/${q.value.id}/pdf?token=${token}`, '_blank');
 }
 
 async function sendEmail() {
@@ -116,7 +103,7 @@ onMounted(async () => {
       </div>
       <div class="flex gap-2 flex-wrap">
         <RouterLink v-if="q.status === 'draft'" :to="`/quotations/${q.id}/edit`" class="btn-secondary">Edit</RouterLink>
-        <button @click="downloadPdf" :disabled="actionLoading === 'pdf'" class="btn-secondary">{{ actionLoading === 'pdf' ? 'Generating…' : 'Download PDF' }}</button>
+        <button @click="viewPdf" class="btn-secondary">View PDF</button>
         <button v-if="['draft','sent'].includes(q.status) && q.client?.email" @click="sendEmail" :disabled="actionLoading === 'email'" class="btn-secondary">{{ actionLoading === 'email' ? 'Sending…' : 'Send Email' }}</button>
         <button v-if="['sent','accepted'].includes(q.status)" @click="convertToInvoice" :disabled="actionLoading === 'convert'" class="btn-primary">{{ actionLoading === 'convert' ? 'Converting…' : 'Convert to Invoice' }}</button>
         <button v-if="q.status === 'draft'" @click="deleteQuotation" :disabled="actionLoading === 'delete'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'delete' ? 'Deleting…' : 'Delete' }}</button>

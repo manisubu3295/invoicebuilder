@@ -45,23 +45,10 @@ function rateLabel(item) {
 
 function showToast(msg) { toast.value = msg; setTimeout(() => toast.value = '', 3000); }
 
-async function downloadPdf() {
-  actionLoading.value = 'pdf';
-  try {
-    const token = localStorage.getItem('akb_token');
-    const base = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-    const url = `${base}/invoices/${invoice.value.id}/pdf?token=${token}`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Invoice-${invoice.value.invoiceNo.replace(/\//g, '-')}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => document.body.removeChild(a), 1000);
-  } catch (e) {
-    showToast('Error: ' + (e.response?.data?.message || 'PDF generation failed'));
-  } finally {
-    actionLoading.value = '';
-  }
+function viewPdf() {
+  const token = localStorage.getItem('akb_token');
+  const base = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  window.open(`${base}/invoices/${invoice.value.id}/pdf?token=${token}`, '_blank');
 }
 
 async function sendEmail() {
@@ -111,9 +98,6 @@ async function deleteInvoice() {
 }
 
 async function reload() { invoice.value = (await invoicesApi.get(route.params.id)).data; }
-function printInvoice() {
-  window.print();
-}
 
 const daysUntilDue = computed(() => {
   if (!invoice.value?.dueDate) return null;
@@ -181,11 +165,7 @@ onMounted(async () => {
       </div>
       <div class="flex gap-2 flex-wrap print:hidden">
         <RouterLink v-if="invoice.status === 'draft'" :to="`/invoices/${invoice.id}/edit`" class="btn-secondary">Edit</RouterLink>
-        <button @click="downloadPdf" :disabled="actionLoading === 'pdf'" class="btn-secondary">{{ actionLoading === 'pdf' ? 'Generating…' : 'Download PDF' }}</button>
-        <button @click="printInvoice" class="btn-secondary">
-          <span class="material-icons" style="font-size:16px">print</span>
-          Print
-        </button>
+        <button @click="viewPdf" class="btn-secondary">View PDF</button>
         <button v-if="!['paid','cancelled'].includes(invoice.status)" @click="sendEmail" :disabled="actionLoading === 'email'" class="btn-secondary">{{ actionLoading === 'email' ? 'Sending…' : 'Send Email' }}</button>
         <button v-if="invoice.status === 'draft'" @click="markSent" :disabled="actionLoading === 'sent'" class="btn-secondary text-indigo-600 border-indigo-200 hover:bg-indigo-50">{{ actionLoading === 'sent' ? '…' : 'Mark as Sent' }}</button>
         <button v-if="['sent','overdue'].includes(invoice.status)" @click="openPaidModal" :disabled="actionLoading === 'paid'" class="btn-primary">{{ actionLoading === 'paid' ? '…' : 'Mark Paid' }}</button>
