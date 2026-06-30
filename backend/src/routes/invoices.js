@@ -75,7 +75,7 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'clientId, date, and items are required' });
     }
 
-    const invoiceNo = await generateInvoiceNumber(clientId);
+    const invoiceNo = await generateInvoiceNumber();
     const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
 
     const invoice = await Invoice.create({
@@ -211,7 +211,7 @@ router.post('/from-deliveries', rbac('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'clientId, date, periodStart, periodEnd, and rows are required' });
     }
 
-    const invoiceNo = await generateInvoiceNumber(clientId);
+    const invoiceNo = await generateInvoiceNumber();
     const totalAmount = rows.reduce((sum, r) => sum + parseFloat(r.totalAmount || 0), 0);
 
     const invoice = await Invoice.create({
@@ -246,6 +246,26 @@ router.post('/from-deliveries', rbac('admin', 'staff'), async (req, res) => {
       include: [{ model: Client, as: 'client' }, { model: InvoiceItem, as: 'items' }],
     });
     res.status(201).json(full);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.patch('/:id/number', rbac('admin'), async (req, res) => {
+  try {
+    const newNo = (req.body.invoiceNo || '').trim();
+    if (!newNo) return res.status(400).json({ message: 'Invoice number is required' });
+
+    const conflict = await Invoice.findOne({ where: { invoiceNo: newNo } });
+    if (conflict && conflict.id !== req.params.id) {
+      return res.status(409).json({ message: `Invoice number "${newNo}" is already used by another invoice` });
+    }
+
+    const invoice = await Invoice.findByPk(req.params.id);
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+
+    await invoice.update({ invoiceNo: newNo });
+    res.json({ invoiceNo: invoice.invoiceNo });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

@@ -52,7 +52,7 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'clientId, date, and items are required' });
     }
 
-    const quotationNo = await generateQuotationNumber(clientId);
+    const quotationNo = await generateQuotationNumber();
     const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
 
     const quotation = await Quotation.create({ quotationNo, clientId, date, validUntil: validUntil || null, notes, totalAmount });
@@ -161,6 +161,26 @@ router.post('/:id/send-email', rbac('admin', 'staff'), async (req, res) => {
   }
 });
 
+router.patch('/:id/number', rbac('admin'), async (req, res) => {
+  try {
+    const newNo = (req.body.quotationNo || '').trim();
+    if (!newNo) return res.status(400).json({ message: 'Quotation number is required' });
+
+    const conflict = await Quotation.findOne({ where: { quotationNo: newNo } });
+    if (conflict && conflict.id !== req.params.id) {
+      return res.status(409).json({ message: `Quotation number "${newNo}" is already used by another quotation` });
+    }
+
+    const q = await Quotation.findByPk(req.params.id);
+    if (!q) return res.status(404).json({ message: 'Quotation not found' });
+
+    await q.update({ quotationNo: newNo });
+    res.json({ quotationNo: q.quotationNo });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.delete('/:id', rbac('admin', 'staff'), async (req, res) => {
   try {
     const q = await Quotation.findByPk(req.params.id);
@@ -184,7 +204,7 @@ router.post('/:id/convert-to-invoice', rbac('admin', 'staff'), async (req, res) 
     if (!q) return res.status(404).json({ message: 'Quotation not found' });
     if (q.status === 'converted') return res.status(400).json({ message: 'Quotation already converted' });
 
-    const invoiceNo = await generateInvoiceNumber(q.clientId);
+    const invoiceNo = await generateInvoiceNumber();
     const invoice = await Invoice.create({
       invoiceNo, quotationId: q.id, clientId: q.clientId,
       date: new Date(), totalAmount: q.totalAmount, status: 'draft',

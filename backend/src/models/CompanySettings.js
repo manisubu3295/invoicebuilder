@@ -20,5 +20,9 @@ module.exports = (sequelize) => {
     logoImage: { type: DataTypes.TEXT('long'), allowNull: true },
     sealImage: { type: DataTypes.TEXT('long'), allowNull: true },
     signatureImage: { type: DataTypes.TEXT('long'), allowNull: true },
+    invoicePrefix: { type: DataTypes.STRING(20), defaultValue: 'INV' },
+    invoiceStartNumber: { type: DataTypes.INTEGER, defaultValue: 1 },
+    quotationPrefix: { type: DataTypes.STRING(20), defaultValue: 'QUO' },
+    quotationStartNumber: { type: DataTypes.INTEGER, defaultValue: 1 },
   }, { tableName: 'CompanySettings' });
 };

@@ -13,6 +13,8 @@ const form = ref({
   bankName: '', bankAccountNo: '', bankAccountName: '',
   currency: 'SGD', currencySymbol: 'S$', paymentTermsDays: 30, signatoryName: '', logoText: '',
   logoImage: null, sealImage: null, signatureImage: null,
+  invoicePrefix: 'INV', invoiceStartNumber: 1,
+  quotationPrefix: 'QUO', quotationStartNumber: 1,
 });
 
 function pickImage(field) {
@@ -174,6 +176,38 @@ onMounted(async () => {
         <div class="input-group">
           <label class="input-label">Default Payment Terms (days)</label>
           <input v-model.number="form.paymentTermsDays" type="number" min="1" class="input-field w-28"/>
+        </div>
+      </div>
+    </div>
+
+    <!-- Document Numbering -->
+    <div class="card mb-5">
+      <h2 class="section-label mb-5 pb-2 border-b border-gray-100 dark:border-slate-700">Document Numbering</h2>
+      <p class="text-sm text-gray-500 dark:text-slate-400 mb-5">Configure the prefix and starting number for auto-generated invoice and quotation numbers. Numbers are formatted as <code class="bg-gray-100 dark:bg-slate-700 px-1 rounded text-xs">PREFIX-0001</code>.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <div class="p-4 rounded-xl bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 space-y-4">
+          <div class="text-sm font-semibold text-gray-700 dark:text-slate-200">Invoices</div>
+          <div class="input-group">
+            <label class="input-label">Prefix</label>
+            <input v-model="form.invoicePrefix" class="input-field" placeholder="INV" maxlength="10"/>
+            <p class="text-xs text-gray-400 dark:text-slate-500 mt-1">Preview: <strong>{{ (form.invoicePrefix || 'INV').trim() }}-{{ String(form.invoiceStartNumber || 1).padStart(4,'0') }}</strong></p>
+          </div>
+          <div class="input-group">
+            <label class="input-label">Starting Number</label>
+            <input v-model.number="form.invoiceStartNumber" type="number" min="1" class="input-field w-28"/>
+          </div>
+        </div>
+        <div class="p-4 rounded-xl bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 space-y-4">
+          <div class="text-sm font-semibold text-gray-700 dark:text-slate-200">Quotations</div>
+          <div class="input-group">
+            <label class="input-label">Prefix</label>
+            <input v-model="form.quotationPrefix" class="input-field" placeholder="QUO" maxlength="10"/>
+            <p class="text-xs text-gray-400 dark:text-slate-500 mt-1">Preview: <strong>{{ (form.quotationPrefix || 'QUO').trim() }}-{{ String(form.quotationStartNumber || 1).padStart(4,'0') }}</strong></p>
+          </div>
+          <div class="input-group">
+            <label class="input-label">Starting Number</label>
+            <input v-model.number="form.quotationStartNumber" type="number" min="1" class="input-field w-28"/>
+          </div>
         </div>
       </div>
     </div>

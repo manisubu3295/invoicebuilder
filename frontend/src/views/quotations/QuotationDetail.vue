@@ -3,15 +3,21 @@ import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { quotationsApi } from '../../api/index.js';
 import { useSettingsStore } from '../../stores/settings.js';
+import { useAuthStore } from '../../stores/auth.js';
 import StatusBadge from '../../components/shared/StatusBadge.vue';
 
 const route = useRoute();
 const router = useRouter();
 const settingsStore = useSettingsStore();
+const authStore = useAuthStore();
 const q = ref(null);
 const loading = ref(true);
 const actionLoading = ref('');
 const toast = ref('');
+const editingNo = ref(false);
+const editNo = ref('');
+const editNoError = ref('');
+const editNoSaving = ref(false);
 
 const s = computed(() => settingsStore.settings || {});
 const sym = computed(() => s.value.currencySymbol || 'S$');
@@ -41,6 +47,29 @@ function rateLabel(item) {
 }
 
 function showToast(msg) { toast.value = msg; setTimeout(() => toast.value = '', 3000); }
+
+function startEditNo() {
+  editNo.value = q.value.quotationNo;
+  editNoError.value = '';
+  editingNo.value = true;
+}
+
+async function saveQuotationNo() {
+  const newNo = editNo.value.trim();
+  if (!newNo) { editNoError.value = 'Quotation number cannot be empty'; return; }
+  editNoSaving.value = true;
+  editNoError.value = '';
+  try {
+    await quotationsApi.updateNumber(q.value.id, newNo);
+    q.value = { ...q.value, quotationNo: newNo };
+    editingNo.value = false;
+    showToast('Quotation number updated');
+  } catch (e) {
+    editNoError.value = e.response?.data?.message || 'Failed to update quotation number';
+  } finally {
+    editNoSaving.value = false;
+  }
+}
 
 function viewPdf() {
   const token = localStorage.getItem('akb_token');
@@ -96,10 +125,24 @@ onMounted(async () => {
 
     <!-- Toolbar -->
     <div class="flex items-center justify-between flex-wrap gap-3 mb-5">
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 flex-wrap">
         <RouterLink to="/quotations" class="btn-icon text-gray-500"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></RouterLink>
-        <h1 class="page-title mb-0">{{ q.quotationNo }}</h1>
-        <StatusBadge :status="q.status" />
+        <template v-if="!editingNo">
+          <h1 class="page-title mb-0">{{ q.quotationNo }}</h1>
+          <button v-if="authStore.isAdmin" @click="startEditNo" class="btn-icon text-gray-400 hover:text-blue-600" title="Edit quotation number">
+            <span class="material-icons" style="font-size:16px">edit</span>
+          </button>
+        </template>
+        <div v-else class="flex flex-col gap-1">
+          <div class="flex items-center gap-2">
+            <input v-model="editNo" @keydown.enter="saveQuotationNo" @keydown.esc="editingNo = false"
+              class="input-field w-44 text-sm font-mono" autofocus placeholder="e.g. QUO-0042"/>
+            <button @click="saveQuotationNo" :disabled="editNoSaving" class="btn-primary text-xs px-3 py-1.5">{{ editNoSaving ? '…' : 'Save' }}</button>
+            <button @click="editingNo = false" class="btn-secondary text-xs px-3 py-1.5">Cancel</button>
+          </div>
+          <p v-if="editNoError" class="text-xs text-red-600 font-medium">{{ editNoError }}</p>
+        </div>
+        <StatusBadge v-if="!editingNo" :status="q.status" />
       </div>
       <div class="flex gap-2 flex-wrap">
         <RouterLink v-if="q.status === 'draft'" :to="`/quotations/${q.id}/edit`" class="btn-secondary">Edit</RouterLink>

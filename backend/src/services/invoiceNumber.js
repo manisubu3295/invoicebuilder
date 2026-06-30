@@ -1,55 +1,46 @@
-const { Invoice, Client } = require('../models');
+const { Invoice, Quotation, CompanySettings } = require('../models');
 const { Op } = require('sequelize');
 
-async function generateInvoiceNumber(clientId) {
-  const client = await Client.findByPk(clientId);
-  if (!client) throw new Error('Client not found');
-
-  const year = new Date().getFullYear();
-  const prefix = `AKB/${client.clientCode}/`;
-  const yearSuffix = `/${year}`;
-
-  const last = await Invoice.findOne({
-    where: {
-      invoiceNo: { [Op.like]: `${prefix}%${yearSuffix}` },
-    },
-    order: [['createdAt', 'DESC']],
-  });
-
-  let seq = 1;
-  if (last) {
-    const parts = last.invoiceNo.split('/');
-    const lastSeq = parseInt(parts[2], 10);
-    if (!isNaN(lastSeq)) seq = lastSeq + 1;
-  }
-
-  return `${prefix}${seq}${yearSuffix}`;
+async function getSettings() {
+  const s = await CompanySettings.findOne();
+  return {
+    invoicePrefix: (s?.invoicePrefix || 'INV').trim(),
+    invoiceStartNumber: parseInt(s?.invoiceStartNumber ?? 1, 10) || 1,
+    quotationPrefix: (s?.quotationPrefix || 'QUO').trim(),
+    quotationStartNumber: parseInt(s?.quotationStartNumber ?? 1, 10) || 1,
+  };
 }
 
-async function generateQuotationNumber(clientId) {
-  const { Quotation, Client } = require('../models');
-  const client = await Client.findByPk(clientId);
-  if (!client) throw new Error('Client not found');
-
-  const year = new Date().getFullYear();
-  const prefix = `AKB/${client.clientCode}/Q`;
-  const yearSuffix = `/${year}`;
-
-  const last = await Quotation.findOne({
-    where: {
-      quotationNo: { [Op.like]: `${prefix}%${yearSuffix}` },
-    },
-    order: [['createdAt', 'DESC']],
+async function generateInvoiceNumber() {
+  const { invoicePrefix, invoiceStartNumber } = await getSettings();
+  const all = await Invoice.findAll({
+    where: { invoiceNo: { [Op.like]: `${invoicePrefix}-%` } },
+    attributes: ['invoiceNo'],
   });
-
-  let seq = 1;
-  if (last) {
-    const parts = last.quotationNo.split('/');
-    const lastSeq = parseInt(parts[2].replace('Q', ''), 10);
-    if (!isNaN(lastSeq)) seq = lastSeq + 1;
+  let maxSeq = invoiceStartNumber - 1;
+  for (const inv of all) {
+    const seg = inv.invoiceNo.slice(invoicePrefix.length + 1);
+    const n = parseInt(seg, 10);
+    if (!isNaN(n) && n > maxSeq) maxSeq = n;
   }
+  const seq = Math.max(maxSeq + 1, invoiceStartNumber);
+  return `${invoicePrefix}-${String(seq).padStart(4, '0')}`;
+}
 
-  return `${prefix}${String(seq).padStart(3, '0')}${yearSuffix}`;
+async function generateQuotationNumber() {
+  const { quotationPrefix, quotationStartNumber } = await getSettings();
+  const all = await Quotation.findAll({
+    where: { quotationNo: { [Op.like]: `${quotationPrefix}-%` } },
+    attributes: ['quotationNo'],
+  });
+  let maxSeq = quotationStartNumber - 1;
+  for (const q of all) {
+    const seg = q.quotationNo.slice(quotationPrefix.length + 1);
+    const n = parseInt(seg, 10);
+    if (!isNaN(n) && n > maxSeq) maxSeq = n;
+  }
+  const seq = Math.max(maxSeq + 1, quotationStartNumber);
+  return `${quotationPrefix}-${String(seq).padStart(4, '0')}`;
 }
 
 module.exports = { generateInvoiceNumber, generateQuotationNumber };

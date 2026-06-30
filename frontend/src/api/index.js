@@ -23,6 +23,7 @@ export const invoicesApi = {
   sendEmail: (id) => api.post(`/invoices/${id}/send-email`),
   markSent: (id) => api.post(`/invoices/${id}/mark-sent`),
   markPaid: (id, data) => api.post(`/invoices/${id}/mark-paid`, data),
+  updateNumber: (id, invoiceNo) => api.patch(`/invoices/${id}/number`, { invoiceNo }),
 };
 
 export const quotationsApi = {
@@ -34,6 +35,7 @@ export const quotationsApi = {
   getPdf: (id) => api.get(`/quotations/${id}/pdf`, { responseType: 'blob' }),
   sendEmail: (id) => api.post(`/quotations/${id}/send-email`),
   convertToInvoice: (id) => api.post(`/quotations/${id}/convert-to-invoice`),
+  updateNumber: (id, quotationNo) => api.patch(`/quotations/${id}/number`, { quotationNo }),
 };
 
 export const jobsApi = {
