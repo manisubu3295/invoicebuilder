@@ -54,7 +54,7 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'clientId, date, and items are required' });
     }
 
-    const quotationNo = await generateQuotationNumber();
+    const quotationNo = await generateQuotationNumber(clientId);
     const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
 
     const quotation = await Quotation.create({ quotationNo, clientId, date, validUntil: validUntil || null, notes, totalAmount });
@@ -206,7 +206,7 @@ router.post('/:id/convert-to-invoice', rbac('admin', 'staff'), async (req, res) 
     if (!q) return res.status(404).json({ message: 'Quotation not found' });
     if (q.status === 'converted') return res.status(400).json({ message: 'Quotation already converted' });
 
-    const invoiceNo = await generateInvoiceNumber();
+    const invoiceNo = await generateInvoiceNumber(q.clientId);
     const invoice = await Invoice.create({
       invoiceNo, quotationId: q.id, clientId: q.clientId,
       date: new Date(), totalAmount: q.totalAmount, status: 'draft',

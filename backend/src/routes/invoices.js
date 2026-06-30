@@ -77,7 +77,7 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'clientId, date, and items are required' });
     }
 
-    const invoiceNo = await generateInvoiceNumber();
+    const invoiceNo = await generateInvoiceNumber(clientId);
     const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
 
     const invoice = await Invoice.create({
@@ -213,7 +213,7 @@ router.post('/from-deliveries', rbac('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'clientId, date, periodStart, periodEnd, and rows are required' });
     }
 
-    const invoiceNo = await generateInvoiceNumber();
+    const invoiceNo = await generateInvoiceNumber(clientId);
     const totalAmount = rows.reduce((sum, r) => sum + parseFloat(r.totalAmount || 0), 0);
 
     const invoice = await Invoice.create({

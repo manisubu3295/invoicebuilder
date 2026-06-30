@@ -26,7 +26,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', rbac('admin'), async (req, res) => {
   try {
-    const { companyName, clientCode, contactPerson, email, phone, address } = req.body;
+    const { companyName, clientCode, contactPerson, email, phone, address, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber } = req.body;
     if (!companyName || !clientCode) return res.status(400).json({ message: 'Company name and client code required' });
 
     const existing = await Client.findOne({ where: { clientCode: clientCode.toUpperCase() } });
@@ -35,6 +35,10 @@ router.post('/', rbac('admin'), async (req, res) => {
     const client = await Client.create({
       companyName, clientCode: clientCode.toUpperCase(),
       contactPerson, email, phone, address,
+      invoicePrefix: invoicePrefix?.trim() || null,
+      invoiceStartNumber: invoiceStartNumber || null,
+      quotationPrefix: quotationPrefix?.trim() || null,
+      quotationStartNumber: quotationStartNumber || null,
     });
     res.status(201).json(client);
   } catch (err) {
@@ -47,8 +51,14 @@ router.put('/:id', rbac('admin'), async (req, res) => {
     const client = await Client.findByPk(req.params.id);
     if (!client) return res.status(404).json({ message: 'Client not found' });
 
-    const { companyName, clientCode, contactPerson, email, phone, address, isActive } = req.body;
-    await client.update({ companyName, clientCode: clientCode?.toUpperCase(), contactPerson, email, phone, address, isActive });
+    const { companyName, clientCode, contactPerson, email, phone, address, isActive, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber } = req.body;
+    await client.update({
+      companyName, clientCode: clientCode?.toUpperCase(), contactPerson, email, phone, address, isActive,
+      invoicePrefix: invoicePrefix?.trim() || null,
+      invoiceStartNumber: invoiceStartNumber || null,
+      quotationPrefix: quotationPrefix?.trim() || null,
+      quotationStartNumber: quotationStartNumber || null,
+    });
     res.json(client);
   } catch (err) {
     res.status(500).json({ message: err.message });
