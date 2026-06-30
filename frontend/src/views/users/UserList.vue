@@ -11,7 +11,7 @@ const error = ref('');
 const showForm = ref(false);
 const editingId = ref(null);
 
-const blank = () => ({ name: '', email: '', phone: '', role: 'staff', password: '', isActive: true });
+const blank = () => ({ name: '', username: '', phone: '', role: 'staff', password: '', isActive: true });
 const nonDriverUsers = computed(() => users.value.filter(u => u.role !== 'driver'));
 const form = ref(blank());
 const isEditingSelf = computed(() => editingId.value === auth.user?.id);
@@ -29,7 +29,7 @@ function openAdd() {
 }
 function openEdit(user) {
   editingId.value = user.id;
-  form.value = { name: user.name, email: user.email, phone: user.phone || '', role: user.role, password: '', isActive: user.isActive };
+  form.value = { name: user.name, username: user.username || '', phone: user.phone || '', role: user.role, password: '', isActive: user.isActive };
   error.value = ''; showForm.value = true;
 }
 function cancelForm() {
@@ -39,7 +39,7 @@ function cancelForm() {
 async function save() {
   error.value = '';
   if (!form.value.name.trim()) { error.value = 'Name is required.'; return; }
-  if (!form.value.email.trim()) { error.value = 'Email is required.'; return; }
+  if (!editingId.value && !form.value.username.trim()) { error.value = 'Username is required.'; return; }
   if (!editingId.value && !form.value.password) { error.value = 'Password is required for new users.'; return; }
   saving.value = true;
   try {
@@ -119,9 +119,10 @@ async function toggleActive(user) {
           <input v-model="form.name" type="text" class="input-field" placeholder="John Tan"/>
         </div>
         <div class="input-group">
-          <label class="input-label">Email *</label>
-          <input v-model="form.email" type="email" :disabled="!!editingId" class="input-field" placeholder="user@akbtransport.com"/>
-          <p v-if="editingId" class="text-xs text-gray-400 mt-1 px-3">Email cannot be changed after creation.</p>
+          <label class="input-label">Username *</label>
+          <input v-model="form.username" type="text" :disabled="!!editingId" class="input-field" placeholder="e.g. john_tan"/>
+          <p v-if="editingId" class="text-xs text-gray-400 mt-1 px-3">Username cannot be changed after creation.</p>
+          <p v-else class="text-xs text-gray-400 mt-1 px-3">Lowercase letters, numbers, underscores only.</p>
         </div>
         <div class="input-group">
           <label class="input-label">Phone</label>
@@ -158,7 +159,7 @@ async function toggleActive(user) {
         <thead>
           <tr>
             <th>Name</th>
-            <th>Email</th>
+            <th>Username</th>
             <th>Phone</th>
             <th>Role</th>
             <th>Status</th>
@@ -174,7 +175,7 @@ async function toggleActive(user) {
               <div class="font-medium text-gray-900">{{ user.name }}</div>
               <div v-if="user.id === auth.user?.id" class="text-xs text-blue-600">You</div>
             </td>
-            <td class="text-gray-600">{{ user.email }}</td>
+            <td class="text-gray-500 font-mono text-xs">{{ user.username }}</td>
             <td class="text-gray-500">{{ user.phone || '—' }}</td>
             <td><span :class="`badge-${user.role}`">{{ user.role }}</span></td>
             <td>

@@ -107,7 +107,7 @@ async function seedIfEmpty() {
     await User.create({
       id: uuidv4(),
       name: 'AK.BALAN',
-      email: process.env.ADMIN_EMAIL || 'akbtransportlogistics@gmail.com',
+      username: 'admin',
       passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD || 'Admin@AKB2026', 10),
       role: 'admin',
       phone: '+6584590123',
@@ -123,7 +123,21 @@ async function seedIfEmpty() {
       address: 'Singapore',
       isActive: true,
     });
-    console.log('Seeded: admin user + SMM client');
+    console.log('Seeded: admin user (username: admin) + SMM client');
+  }
+
+  // Patch any users missing a username (schema upgrade from email-login system)
+  const { Op } = require('sequelize');
+  const noUsername = await User.findAll({ where: { username: null } });
+  for (const u of noUsername) {
+    let base = u.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'user';
+    let candidate = base;
+    let i = 1;
+    while (await User.findOne({ where: { username: candidate, id: { [Op.ne]: u.id } } })) {
+      candidate = `${base}_${i++}`;
+    }
+    await u.update({ username: candidate });
+    console.log(`Assigned username "${candidate}" to user ${u.name}`);
   }
 }
 

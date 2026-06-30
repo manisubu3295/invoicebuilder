@@ -9,7 +9,7 @@ router.use(auth, rbac('admin'));
 router.get('/', async (req, res) => {
   try {
     const users = await User.findAll({
-      attributes: ['id', 'name', 'email', 'role', 'phone', 'isActive', 'createdAt'],
+      attributes: ['id', 'name', 'username', 'role', 'phone', 'isActive', 'createdAt'],
       order: [['name', 'ASC']],
     });
     res.json(users);
@@ -20,16 +20,19 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { name, email, phone, password, role } = req.body;
-    if (!name || !email || !password) return res.status(400).json({ message: 'name, email, password required' });
+    const { name, username, phone, password, role } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ message: 'Name is required' });
+    if (!username || !username.trim()) return res.status(400).json({ message: 'Username is required' });
+    if (!password) return res.status(400).json({ message: 'Password is required' });
     if (role === 'driver') return res.status(400).json({ message: 'Driver accounts must be created via the Drivers page.' });
 
-    const existing = await User.findOne({ where: { email } });
-    if (existing) return res.status(409).json({ message: 'Email already registered' });
+    const clean = username.trim().toLowerCase();
+    const existing = await User.findOne({ where: { username: clean } });
+    if (existing) return res.status(409).json({ message: `Username "${clean}" is already taken` });
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await User.create({ name, email, phone, passwordHash, role: role || 'staff' });
-    res.status(201).json({ id: user.id, name: user.name, email: user.email, role: user.role });
+    const user = await User.create({ name: name.trim(), username: clean, phone, passwordHash, role: role || 'staff' });
+    res.status(201).json({ id: user.id, name: user.name, username: user.username, role: user.role, isActive: user.isActive });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -47,7 +50,7 @@ router.put('/:id', async (req, res) => {
     if (password) updates.passwordHash = await bcrypt.hash(password, 10);
 
     await user.update(updates);
-    res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+    res.json({ id: user.id, name: user.name, username: user.username, role: user.role, isActive: user.isActive });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

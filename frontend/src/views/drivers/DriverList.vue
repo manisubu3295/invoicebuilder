@@ -12,7 +12,7 @@ const editingId = ref(null);
 const form = ref(blank());
 
 function blank() {
-  return { name: '', email: '', phone: '', password: '', licenseNumber: '', licenseExpiry: '', licenseClass: '', nric: '', emergencyContact: '', emergencyPhone: '', assignedVehicleId: '', isActive: true, dailyRate: '' };
+  return { name: '', username: '', phone: '', password: '', licenseNumber: '', licenseExpiry: '', licenseClass: '', nric: '', emergencyContact: '', emergencyPhone: '', assignedVehicleId: '', isActive: true, dailyRate: '' };
 }
 
 function licenseWarning(expiry) {
@@ -33,7 +33,7 @@ function openEdit(d) {
   editingId.value = d.id;
   form.value = {
     name: d.user?.name || '',
-    email: d.user?.email || '',
+    username: d.user?.username || '',
     phone: d.user?.phone || '',
     password: '',
     licenseNumber: d.licenseNumber || '',
@@ -102,9 +102,10 @@ onMounted(async () => {
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div class="input-group"><label class="input-label">Full Name *</label><input v-model="form.name" class="input-field"/></div>
         <div class="input-group">
-          <label class="input-label">Email *</label>
-          <input v-model="form.email" type="email" :disabled="!!editingId" class="input-field"/>
-          <p v-if="editingId" class="text-xs text-gray-400 mt-1 px-3">Email cannot be changed after creation.</p>
+          <label class="input-label">Username *</label>
+          <input v-model="form.username" type="text" :disabled="!!editingId" class="input-field" placeholder="e.g. john_tan"/>
+          <p v-if="editingId" class="text-xs text-gray-400 mt-1 px-3">Username cannot be changed after creation.</p>
+          <p v-else class="text-xs text-gray-400 mt-1 px-3">Lowercase letters, numbers, underscores only.</p>
         </div>
         <div class="input-group"><label class="input-label">Phone</label><input v-model="form.phone" class="input-field"/></div>
         <div class="input-group">
@@ -158,7 +159,7 @@ onMounted(async () => {
           <tr v-for="d in drivers" :key="d.id" :class="!d.user?.isActive ? 'opacity-50' : ''">
             <td>
               <div class="font-medium text-gray-900 dark:text-slate-100">{{ d.user?.name }}</div>
-              <div class="text-xs text-gray-400">{{ d.user?.email }}</div>
+              <div class="text-xs text-gray-400 font-mono">{{ d.user?.username }}</div>
               <div v-if="d.emergencyContact" class="text-xs text-gray-400 mt-0.5">🆘 {{ d.emergencyContact }} {{ d.emergencyPhone }}</div>
             </td>
             <td class="text-gray-500 text-sm">{{ d.nric || '—' }}</td>

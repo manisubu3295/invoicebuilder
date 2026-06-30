@@ -39,8 +39,8 @@ export const useAuthStore = defineStore('auth', () => {
     inactivityTimer = setTimeout(onExpire, INACTIVITY_MS);
   }
 
-  async function login(email, password) {
-    const { data } = await authApi.login({ email, password });
+  async function login(username, password) {
+    const { data } = await authApi.login({ username, password });
     token.value = data.token;
     user.value = data.user;
     localStorage.setItem('akb_token', data.token);

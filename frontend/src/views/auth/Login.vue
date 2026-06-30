@@ -6,7 +6,7 @@ import { useAuthStore } from '../../stores/auth.js';
 const router = useRouter();
 const auth = useAuthStore();
 
-const email = ref('');
+const username = ref('');
 const password = ref('');
 const showPwd = ref(false);
 const error = ref('');
@@ -16,10 +16,10 @@ async function submit() {
   error.value = '';
   loading.value = true;
   try {
-    await auth.login(email.value, password.value);
+    await auth.login(username.value, password.value);
     router.push('/dashboard');
   } catch (e) {
-    error.value = e.response?.data?.message || 'Invalid email or password.';
+    error.value = e.response?.data?.message || 'Invalid username or password.';
   } finally {
     loading.value = false;
   }
@@ -137,21 +137,21 @@ async function submit() {
         <!-- Form -->
         <form @submit.prevent="submit" class="space-y-5">
 
-          <!-- Email -->
+          <!-- Username -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">Username</label>
             <div class="relative">
               <span class="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                 </svg>
               </span>
               <input
-                v-model="email"
-                type="email"
+                v-model="username"
+                type="text"
                 required
-                autocomplete="email"
-                placeholder="you@akbtransport.com"
+                autocomplete="username"
+                placeholder="e.g. admin"
                 class="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-900 placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               />
             </div>
