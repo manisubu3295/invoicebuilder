@@ -42,21 +42,45 @@ try {
   }
 }
 
-// ── 2. Connect to PostgreSQL ───────────────────────────────────────────────
+// ── 2. Connect to PostgreSQL (create DB if missing) ────────────────────────
 
 step('Connecting to PostgreSQL');
 const config = require('./src/config/database')[process.env.NODE_ENV || 'development'];
-const sequelize = new Sequelize(config.database, config.username, config.password, {
-  ...config,
-  logging: false,
-});
 
 (async () => {
+  // Connect to the default 'postgres' database first to create our DB if needed
+  const admin = new Sequelize('postgres', config.username, config.password, {
+    host: config.host,
+    port: config.port || 5432,
+    dialect: 'postgres',
+    logging: false,
+    dialectOptions: config.dialectOptions || {},
+  });
+
+  try {
+    await admin.authenticate();
+    const [[{ count }]] = await admin.query(
+      `SELECT COUNT(*) AS count FROM pg_database WHERE datname = '${config.database}'`
+    );
+    if (parseInt(count, 10) === 0) {
+      await admin.query(`CREATE DATABASE "${config.database}"`);
+      console.log(`created database "${config.database}"`);
+    }
+    await admin.close();
+  } catch (e) {
+    fail(`Cannot connect to PostgreSQL: ${e.message}\n  Check DB_HOST, DB_USER, DB_PASSWORD in .env`);
+  }
+
+  const sequelize = new Sequelize(config.database, config.username, config.password, {
+    ...config,
+    logging: false,
+  });
+
   try {
     await sequelize.authenticate();
     ok(`${config.database}@${config.host}`);
   } catch (e) {
-    fail(`Cannot connect to PostgreSQL: ${e.message}\n  Check DB_HOST, DB_NAME, DB_USER, DB_PASSWORD in .env`);
+    fail(`Cannot connect to database "${config.database}": ${e.message}`);
   }
 
   // ── 3. Sync schema (create all tables) ──────────────────────────────────
@@ -118,18 +142,17 @@ const sequelize = new Sequelize(config.database, config.username, config.passwor
     if (count > 0) {
       ok(`${count} user(s) already exist — skipping seed`);
     } else {
-      const adminEmail = process.env.ADMIN_EMAIL || 'akbtransportlogistics@gmail.com';
       const adminPass = process.env.ADMIN_PASSWORD || 'Admin@AKB2026';
       await User.create({
         id: uuidv4(),
         name: 'AK.BALAN',
-        email: adminEmail,
+        username: 'admin',
         passwordHash: await bcrypt.hash(adminPass, 12),
         role: 'admin',
         phone: '+6584590123',
         isActive: true,
       });
-      ok(`admin user created: ${adminEmail}`);
+      ok(`admin user created — login with username: admin`);
       if (!process.env.ADMIN_PASSWORD) {
         console.log('\n  ⚠️  Default password used. Change it immediately after first login.');
       }
