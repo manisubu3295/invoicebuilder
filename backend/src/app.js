@@ -138,8 +138,21 @@ async function markOverdueInvoices() {
 }
 
 async function startServer() {
+  // Warn about insecure defaults in production
+  if (isProd) {
+    const weak = ['change_this', 'password', 'secret', 'your_', 'changeme'];
+    const jwt = process.env.JWT_SECRET || '';
+    if (jwt.length < 32 || weak.some(w => jwt.toLowerCase().includes(w))) {
+      console.warn('⚠️  WARNING: JWT_SECRET appears weak. Set a strong random secret in production.');
+    }
+    if (!process.env.DB_PASSWORD || process.env.DB_PASSWORD === 'password') {
+      console.warn('⚠️  WARNING: DB_PASSWORD is not set or is using the default value.');
+    }
+  }
+
   try {
-    await sequelize.sync({ force: false, alter: true });
+    // alter: { drop: false } adds new columns but never drops existing ones — safe for production
+    await sequelize.sync({ alter: { drop: false } });
     console.log('Database ready (PostgreSQL)');
     await seedIfEmpty();
     await markOverdueInvoices();
@@ -167,6 +180,14 @@ async function startServer() {
     process.exit(1);
   }
 }
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Promise Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err.message);
+  process.exit(1);
+});
 
 startServer();
 

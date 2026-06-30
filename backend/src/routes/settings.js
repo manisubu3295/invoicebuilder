@@ -19,10 +19,22 @@ router.get('/', async (req, res) => {
   }
 });
 
+const ALLOWED_FIELDS = [
+  'companyName', 'registrationNo', 'address', 'phone', 'email', 'website',
+  'bankName', 'bankAccountNo', 'bankAccountName',
+  'currency', 'currencySymbol', 'paymentTermsDays', 'signatoryName', 'logoText',
+  'logoImage', 'sealImage', 'signatureImage',
+  'invoicePrefix', 'invoiceStartNumber', 'quotationPrefix', 'quotationStartNumber',
+];
+
 router.put('/', rbac('admin'), async (req, res) => {
   try {
     const s = await getOrCreate();
-    await s.update(req.body);
+    const updates = {};
+    for (const key of ALLOWED_FIELDS) {
+      if (key in req.body) updates[key] = req.body[key];
+    }
+    await s.update(updates);
     res.json(s);
   } catch (err) {
     res.status(500).json({ message: err.message });

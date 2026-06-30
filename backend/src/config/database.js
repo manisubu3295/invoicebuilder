@@ -8,8 +8,16 @@ const pgConfig = {
   username: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || '',
   logging: false,
+  pool: {
+    max: 10,
+    min: 2,
+    acquire: 30000,
+    idle: 10000,
+  },
   dialectOptions: {
     ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    statement_timeout: 30000,
+    idle_in_transaction_session_timeout: 30000,
   },
 };
 
