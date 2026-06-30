@@ -10,6 +10,8 @@ const { sendQuotationEmail } = require('../services/emailService');
 
 router.use(auth);
 
+const num = (v) => (v === '' || v === null || v === undefined) ? null : parseFloat(v);
+
 router.get('/', async (req, res) => {
   try {
     const { fromDate, toDate } = req.query;
@@ -66,9 +68,9 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       rate: item.rate,
       rateType: item.rateType || 'per_week',
       deliveryDate: item.deliveryDate,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      totalAmount: item.totalAmount,
+      quantity: num(item.quantity),
+      unitPrice: num(item.unitPrice),
+      totalAmount: num(item.totalAmount),
     }));
     await QuotationItem.bulkCreate(qItems);
 
@@ -220,9 +222,9 @@ router.post('/:id/convert-to-invoice', rbac('admin', 'staff'), async (req, res) 
       rate: item.rate,
       rateType: item.rateType,
       deliveryDate: item.deliveryDate,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      totalAmount: item.totalAmount,
+      quantity: num(item.quantity),
+      unitPrice: num(item.unitPrice),
+      totalAmount: num(item.totalAmount),
     }));
     await InvoiceItem.bulkCreate(invoiceItems);
     await q.update({ status: 'converted' });

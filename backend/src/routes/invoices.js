@@ -10,6 +10,8 @@ const { sendInvoiceEmail } = require('../services/emailService');
 
 router.use(auth);
 
+const num = (v) => (v === '' || v === null || v === undefined) ? null : parseFloat(v);
+
 router.get('/', async (req, res) => {
   try {
     const { status, clientId, driverId, vehicleId, fromDate, toDate } = req.query;
@@ -90,15 +92,15 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
         sno: item.sno || idx + 1,
         jobDescription: item.jobDescription,
         itemType: item.itemType || 'service',
-        fromDate: item.fromDate,
-        toDate: item.toDate,
-        rate: item.rate,
+        fromDate: item.fromDate || null,
+        toDate: item.toDate || null,
+        rate: num(item.rate),
         rateType: item.rateType || 'per_week',
         deliveryDate: dates[0] || item.deliveryDate || null,
         deliveryDates: dates.length ? JSON.stringify(dates) : null,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        totalAmount: item.totalAmount,
+        quantity: num(item.quantity),
+        unitPrice: num(item.unitPrice),
+        totalAmount: num(item.totalAmount),
       };
     });
     await InvoiceItem.bulkCreate(invoiceItems);
@@ -131,15 +133,15 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
           sno: item.sno || idx + 1,
           jobDescription: item.jobDescription,
           itemType: item.itemType || 'service',
-          fromDate: item.fromDate,
-          toDate: item.toDate,
-          rate: item.rate,
+          fromDate: item.fromDate || null,
+          toDate: item.toDate || null,
+          rate: num(item.rate),
           rateType: item.rateType || 'per_week',
           deliveryDate: dates[0] || item.deliveryDate || null,
           deliveryDates: dates.length ? JSON.stringify(dates) : null,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          totalAmount: item.totalAmount,
+          quantity: num(item.quantity),
+          unitPrice: num(item.unitPrice),
+          totalAmount: num(item.totalAmount),
         };
       });
       await InvoiceItem.bulkCreate(invoiceItems);
