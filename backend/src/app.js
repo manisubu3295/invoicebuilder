@@ -139,21 +139,8 @@ async function markOverdueInvoices() {
 
 async function startServer() {
   try {
-    // SQLite performance pragmas
-    await sequelize.query('PRAGMA foreign_keys = OFF');
-    await sequelize.query('PRAGMA journal_mode = WAL');
-    await sequelize.query('PRAGMA synchronous = NORMAL');
-    await sequelize.query('PRAGMA cache_size = -32000'); // 32 MB
-
-    // Clean up any leftover backup tables from failed previous syncs
-    const [tables] = await sequelize.query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_backup'");
-    for (const { name } of tables) {
-      await sequelize.query(`DROP TABLE IF EXISTS \`${name}\``);
-    }
     await sequelize.sync({ force: false, alter: true });
-    await sequelize.query('PRAGMA foreign_keys = ON');
-
-    console.log('Database ready (SQLite, WAL mode)');
+    console.log('Database ready (PostgreSQL)');
     await seedIfEmpty();
     await markOverdueInvoices();
     setInterval(markOverdueInvoices, 60 * 60 * 1000);
