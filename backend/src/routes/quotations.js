@@ -11,6 +11,7 @@ const { sendQuotationEmail } = require('../services/emailService');
 router.use(auth);
 
 const num = (v) => (v === '' || v === null || v === undefined) ? null : parseFloat(v);
+const dateStr = (v) => (v === '' || v === null || v === undefined) ? null : v;
 
 router.get('/', async (req, res) => {
   try {
@@ -63,11 +64,11 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       sno: item.sno || idx + 1,
       jobDescription: item.jobDescription,
       itemType: item.itemType || 'service',
-      fromDate: item.fromDate,
-      toDate: item.toDate,
-      rate: item.rate,
+      fromDate: dateStr(item.fromDate),
+      toDate: dateStr(item.toDate),
+      rate: num(item.rate),
       rateType: item.rateType || 'per_week',
-      deliveryDate: item.deliveryDate,
+      deliveryDate: dateStr(item.deliveryDate),
       quantity: num(item.quantity),
       unitPrice: num(item.unitPrice),
       totalAmount: num(item.totalAmount),
@@ -97,14 +98,14 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
         sno: item.sno || idx + 1,
         jobDescription: item.jobDescription,
         itemType: item.itemType || 'service',
-        fromDate: item.fromDate,
-        toDate: item.toDate,
-        rate: item.rate,
+        fromDate: dateStr(item.fromDate),
+        toDate: dateStr(item.toDate),
+        rate: num(item.rate),
         rateType: item.rateType || 'per_week',
-        deliveryDate: item.deliveryDate,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        totalAmount: item.totalAmount,
+        deliveryDate: dateStr(item.deliveryDate),
+        quantity: num(item.quantity),
+        unitPrice: num(item.unitPrice),
+        totalAmount: num(item.totalAmount),
       }));
       await QuotationItem.bulkCreate(qItems);
       await q.update({ date, validUntil: validUntil || null, notes, status, totalAmount });
@@ -217,11 +218,11 @@ router.post('/:id/convert-to-invoice', rbac('admin', 'staff'), async (req, res) 
       sno: item.sno,
       jobDescription: item.jobDescription,
       itemType: item.itemType || 'service',
-      fromDate: item.fromDate,
-      toDate: item.toDate,
-      rate: item.rate,
+      fromDate: dateStr(item.fromDate),
+      toDate: dateStr(item.toDate),
+      rate: num(item.rate),
       rateType: item.rateType,
-      deliveryDate: item.deliveryDate,
+      deliveryDate: dateStr(item.deliveryDate),
       quantity: num(item.quantity),
       unitPrice: num(item.unitPrice),
       totalAmount: num(item.totalAmount),
