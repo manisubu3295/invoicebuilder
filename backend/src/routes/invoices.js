@@ -91,7 +91,7 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
     const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
 
     const invoice = await createInvoiceWithNumber(clientId, {
-      date, dueDate, notes, quotationId, jobId, totalAmount, status: 'draft',
+      date, dueDate: dueDate || null, notes, quotationId, jobId, totalAmount, status: 'draft',
     });
 
     const invoiceItems = items.map((item, idx) => {
@@ -155,9 +155,9 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
         };
       });
       await InvoiceItem.bulkCreate(invoiceItems);
-      await invoice.update({ date, dueDate, notes, status, totalAmount });
+      await invoice.update({ date, dueDate: dueDate || null, notes, status, totalAmount });
     } else {
-      await invoice.update({ date, dueDate, notes, status });
+      await invoice.update({ date, dueDate: dueDate || null, notes, status });
     }
 
     const full = await Invoice.findByPk(invoice.id, {
@@ -228,7 +228,7 @@ router.post('/from-deliveries', rbac('admin', 'staff'), async (req, res) => {
     const totalAmount = rows.reduce((sum, r) => sum + parseFloat(r.totalAmount || 0), 0);
 
     const invoice = await createInvoiceWithNumber(clientId, {
-      date, dueDate, notes,
+      date, dueDate: dueDate || null, notes,
       totalAmount, status: 'draft',
       invoiceType: 'delivery',
       periodStart, periodEnd,
