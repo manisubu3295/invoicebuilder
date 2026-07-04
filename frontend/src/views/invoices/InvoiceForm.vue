@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { invoicesApi, clientsApi, itemCatalogApi } from '../../api/index.js';
+import { invoicesApi, clientsApi, itemCatalogApi, quotationsApi } from '../../api/index.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import LineItemEditor from '../../components/shared/LineItemEditor.vue';
 
@@ -13,15 +13,40 @@ const currency = computed(() => settingsStore.settings?.currency || 'SGD');
 const sym = computed(() => settingsStore.settings?.currencySymbol || 'S$');
 
 const form = ref({
-  clientId: '', date: new Date().toISOString().split('T')[0], dueDate: '', notes: '',
+  clientId: '', date: new Date().toISOString().split('T')[0], dueDate: '', notes: '', quotationId: null,
   items: [{ sno: 1, itemType: 'service', jobDescription: '', fromDate: '', toDate: '', rate: '', rateType: 'per_week', deliveryDate: '', deliveryDates: [], quantity: 1, unitPrice: '', totalAmount: 0 }],
 });
 const clients = ref([]);
 const catalog = ref([]);
+const quotations = ref([]);
+const loadedQuotationNo = ref('');
 const loading = ref(false);
 const error = ref('');
 const nextNumber = ref('');
 const total = computed(() => form.value.items.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0));
+
+async function loadQuotation(quotationId) {
+  if (!quotationId) return;
+  const { data: q } = await quotationsApi.get(quotationId);
+  form.value.quotationId = q.id;
+  form.value.clientId = q.clientId;
+  form.value.notes = q.notes || '';
+  form.value.items = (q.items || []).map((i, idx) => {
+    const deliveryDates = i.deliveryDate ? [i.deliveryDate] : [];
+    return {
+      sno: i.sno || idx + 1, itemType: i.itemType || 'service', jobDescription: i.jobDescription,
+      fromDate: i.fromDate || '', toDate: i.toDate || '', rate: i.rate || '', rateType: i.rateType || 'per_week',
+      deliveryDate: i.deliveryDate || '', deliveryDates, quantity: i.quantity || 1, unitPrice: i.unitPrice || '',
+      totalAmount: i.totalAmount || 0,
+    };
+  });
+  loadedQuotationNo.value = q.quotationNo;
+}
+
+function clearQuotation() {
+  form.value.quotationId = null;
+  loadedQuotationNo.value = '';
+}
 
 async function refreshNextNumber() {
   if (isEdit.value) return;
@@ -39,7 +64,7 @@ onMounted(async () => {
   if (isEdit.value) {
     const { data } = await invoicesApi.get(route.params.id);
     form.value = {
-      clientId: data.clientId, date: data.date, dueDate: data.dueDate || '', notes: data.notes || '',
+      clientId: data.clientId, date: data.date, dueDate: data.dueDate || '', notes: data.notes || '', quotationId: data.quotationId || null,
       items: (data.items || []).map(i => {
         let deliveryDates = [];
         try { deliveryDates = i.deliveryDates ? JSON.parse(i.deliveryDates) : []; } catch {}
@@ -49,6 +74,10 @@ onMounted(async () => {
     };
   } else {
     await refreshNextNumber();
+    quotationsApi.list().then(r => {
+      quotations.value = r.data.filter(q => !['converted', 'rejected'].includes(q.status));
+    });
+    if (route.query.quotationId) await loadQuotation(route.query.quotationId);
   }
 });
 
@@ -88,6 +117,20 @@ async function submit() {
 
     <div class="card mb-4">
       <div v-if="error" class="alert-error mb-5">{{ error }}</div>
+
+      <div v-if="!isEdit" class="input-group mb-5">
+        <label class="input-label">Load from Quotation (optional)</label>
+        <div v-if="form.quotationId" class="flex items-center gap-2 text-sm">
+          <span class="font-medium">{{ loadedQuotationNo }}</span>
+          <button type="button" @click="clearQuotation" class="text-xs text-gray-400 hover:text-red-600">✕ clear</button>
+        </div>
+        <select v-else @change="loadQuotation($event.target.value)" class="input-field">
+          <option value="">None — create from scratch</option>
+          <option v-for="q in quotations" :key="q.id" :value="q.id">{{ q.quotationNo }} — {{ q.client?.companyName }}</option>
+        </select>
+        <p class="text-xs text-gray-400 dark:text-slate-500 mt-1">Pre-fills the client and line items below; you can still edit everything before saving. The quotation will be marked as converted once this invoice is created.</p>
+      </div>
+
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
         <div class="input-group">
           <label class="input-label">Client *</label>

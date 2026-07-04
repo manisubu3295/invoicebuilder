@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const fs = require('fs');
 const { Op } = require('sequelize');
-const { Invoice, InvoiceItem, Client, Payment, CompanySettings, DeliveryLog, Job, Driver, Vehicle, User } = require('../models');
+const { Invoice, InvoiceItem, Client, Payment, CompanySettings, DeliveryLog, Job, Driver, Vehicle, User, Quotation } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 const { createInvoiceWithNumber, generateInvoiceNumber } = require('../services/invoiceNumber');
@@ -88,10 +88,17 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'clientId, date, and items are required' });
     }
 
+    let quotation = null;
+    if (quotationId) {
+      quotation = await Quotation.findOne({ where: { id: quotationId, isTest: isTestModeEnabled() } });
+      if (!quotation) return res.status(404).json({ message: 'Quotation not found' });
+      if (quotation.status === 'converted') return res.status(400).json({ message: 'This quotation has already been converted to an invoice' });
+    }
+
     const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
 
     const invoice = await createInvoiceWithNumber(clientId, {
-      date, dueDate: dueDate || null, notes, quotationId, jobId, totalAmount, status: 'draft',
+      date, dueDate: dueDate || null, notes, quotationId: quotationId || null, jobId, totalAmount, status: 'draft',
     });
 
     const invoiceItems = items.map((item, idx) => {
@@ -113,6 +120,8 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       };
     });
     await InvoiceItem.bulkCreate(invoiceItems);
+
+    if (quotation) await quotation.update({ status: 'converted' });
 
     const full = await Invoice.findByPk(invoice.id, {
       include: [{ model: Client, as: 'client' }, { model: InvoiceItem, as: 'items' }],
