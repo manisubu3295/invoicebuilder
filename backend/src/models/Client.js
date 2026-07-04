@@ -14,6 +14,7 @@ module.exports = (sequelize, DataTypes) => {
     invoiceStartNumber: { type: DataTypes.INTEGER, allowNull: true },
     quotationPrefix: { type: DataTypes.STRING(20), allowNull: true },
     quotationStartNumber: { type: DataTypes.INTEGER, allowNull: true },
+    isTest: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   }, {
     tableName: 'clients',
     timestamps: true,

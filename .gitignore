@@ -32,6 +32,9 @@ build/
 # Generated PDF files
 backend/uploads/pdfs/
 
+# clean-prod.js backup dumps — may contain real client data
+backend/backups/
+
 # PM2
 logs/
 .pm2/

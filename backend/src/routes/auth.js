@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 const authMiddleware = require('../middleware/auth');
+const { canToggleTestMode } = require('../services/testMode');
 
 router.post('/login', async (req, res) => {
   try {
@@ -21,7 +22,8 @@ router.post('/login', async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
     );
 
-    res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role } });
+    const canTestMode = await canToggleTestMode(user);
+    res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, canToggleTestMode: canTestMode } });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -32,7 +34,8 @@ router.get('/me', authMiddleware, async (req, res) => {
     const user = await User.findByPk(req.user.id, {
       attributes: ['id', 'name', 'username', 'role', 'phone'],
     });
-    res.json(user);
+    const canTestMode = await canToggleTestMode(user);
+    res.json({ ...user.toJSON(), canToggleTestMode: canTestMode });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

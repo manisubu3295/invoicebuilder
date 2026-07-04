@@ -8,7 +8,7 @@ import { useAuthStore } from '../../stores/auth.js';
 const store = useSettingsStore();
 const themeStore = useThemeStore();
 const authStore = useAuthStore();
-const canToggleTestMode = ['admin', 'testadmin'].includes(authStore.user?.username);
+const canToggleTestMode = !!authStore.user?.canToggleTestMode;
 const saving = ref(false);
 const toast = ref(null);
 const form = ref({

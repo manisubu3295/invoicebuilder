@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { CompanySettings } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
-const { setTestModeEnabled } = require('../services/testMode');
+const { setTestModeEnabled, canToggleTestMode } = require('../services/testMode');
 
 router.use(auth);
 
@@ -29,10 +29,6 @@ const ALLOWED_FIELDS = [
   'testModeEnabled',
 ];
 
-// Only the super admin account or the dedicated test-login account may flip
-// Test Mode — a regular admin (e.g. an office manager) shouldn't be able to.
-const TEST_MODE_USERNAMES = ['admin', 'testadmin'];
-
 router.put('/', rbac('admin'), async (req, res) => {
   try {
     const s = await getOrCreate();
@@ -41,7 +37,7 @@ router.put('/', rbac('admin'), async (req, res) => {
       if (key in req.body) updates[key] = req.body[key];
     }
     if ('testModeEnabled' in updates && updates.testModeEnabled !== s.testModeEnabled
-      && !TEST_MODE_USERNAMES.includes(req.user.username)) {
+      && !(await canToggleTestMode(req.user))) {
       return res.status(403).json({ message: 'Only the super admin or test account can toggle Test Mode' });
     }
     await s.update(updates);
