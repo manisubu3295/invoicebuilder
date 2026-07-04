@@ -1,5 +1,6 @@
 const { Invoice, Quotation, CompanySettings, Client } = require('../models');
 const { Op } = require('sequelize');
+const { isTestModeEnabled } = require('./testMode');
 
 async function getSettings() {
   const s = await CompanySettings.findOne();
@@ -43,10 +44,12 @@ async function resolveQuotationPrefix(clientId) {
   return { prefix: s.quotationPrefix, startNumber: s.quotationStartNumber };
 }
 
-async function generateInvoiceNumber(clientId) {
-  const { prefix, startNumber } = await resolveInvoicePrefix(clientId);
+async function generateInvoiceNumber(clientId, isTest = false) {
+  const { prefix: basePrefix, startNumber: baseStart } = await resolveInvoicePrefix(clientId);
+  const prefix = isTest ? `TEST-${basePrefix}` : basePrefix;
+  const startNumber = isTest ? 1 : baseStart;
   const all = await Invoice.findAll({
-    where: { invoiceNo: { [Op.like]: `${prefix}-%` } },
+    where: { invoiceNo: { [Op.like]: `${prefix}-%` }, isTest },
     attributes: ['invoiceNo'],
   });
   let maxSeq = startNumber - 1;
@@ -59,10 +62,12 @@ async function generateInvoiceNumber(clientId) {
   return `${prefix}-${String(seq).padStart(4, '0')}`;
 }
 
-async function generateQuotationNumber(clientId) {
-  const { prefix, startNumber } = await resolveQuotationPrefix(clientId);
+async function generateQuotationNumber(clientId, isTest = false) {
+  const { prefix: basePrefix, startNumber: baseStart } = await resolveQuotationPrefix(clientId);
+  const prefix = isTest ? `TEST-${basePrefix}` : basePrefix;
+  const startNumber = isTest ? 1 : baseStart;
   const all = await Quotation.findAll({
-    where: { quotationNo: { [Op.like]: `${prefix}-%` } },
+    where: { quotationNo: { [Op.like]: `${prefix}-%` }, isTest },
     attributes: ['quotationNo'],
   });
   let maxSeq = startNumber - 1;
@@ -75,4 +80,35 @@ async function generateQuotationNumber(clientId) {
   return `${prefix}-${String(seq).padStart(4, '0')}`;
 }
 
-module.exports = { generateInvoiceNumber, generateQuotationNumber };
+// Concurrent requests can compute the same "next" number before either row
+// exists. The unique DB constraint rejects the second insert — retry with a
+// freshly-computed number (which will now see the first row) instead of
+// surfacing a spurious error to the user.
+async function createWithRetry(model, generateNumber, numberField, clientId, data, isTest) {
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const number = await generateNumber(clientId, isTest);
+    try {
+      return await model.create({ ...data, clientId, isTest, [numberField]: number });
+    } catch (err) {
+      const isDuplicateNumber = err.name === 'SequelizeUniqueConstraintError' &&
+        err.errors?.some((e) => e.path === numberField);
+      if (!isDuplicateNumber || attempt === maxAttempts) throw err;
+    }
+  }
+}
+
+function createInvoiceWithNumber(clientId, data) {
+  return createWithRetry(Invoice, generateInvoiceNumber, 'invoiceNo', clientId, data, isTestModeEnabled());
+}
+
+function createQuotationWithNumber(clientId, data) {
+  return createWithRetry(Quotation, generateQuotationNumber, 'quotationNo', clientId, data, isTestModeEnabled());
+}
+
+module.exports = {
+  generateInvoiceNumber,
+  generateQuotationNumber,
+  createInvoiceWithNumber,
+  createQuotationWithNumber,
+};

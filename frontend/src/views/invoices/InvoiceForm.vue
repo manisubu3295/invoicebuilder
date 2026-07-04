@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { invoicesApi, clientsApi, itemCatalogApi } from '../../api/index.js';
 import { useSettingsStore } from '../../stores/settings.js';
@@ -20,7 +20,15 @@ const clients = ref([]);
 const catalog = ref([]);
 const loading = ref(false);
 const error = ref('');
+const nextNumber = ref('');
 const total = computed(() => form.value.items.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0));
+
+async function refreshNextNumber() {
+  if (isEdit.value) return;
+  try { nextNumber.value = (await invoicesApi.getNextNumber(form.value.clientId || undefined)).data.nextNumber; }
+  catch { nextNumber.value = ''; }
+}
+watch(() => form.value.clientId, refreshNextNumber);
 
 onMounted(async () => {
   await settingsStore.fetchSettings();
@@ -39,6 +47,8 @@ onMounted(async () => {
         return { ...i, itemType: i.itemType || 'service', deliveryDate: i.deliveryDate || '', deliveryDates, quantity: i.quantity || 1, unitPrice: i.unitPrice || '' };
       }),
     };
+  } else {
+    await refreshNextNumber();
   }
 });
 
@@ -73,6 +83,7 @@ async function submit() {
     <div class="flex items-center gap-3 mb-6">
       <RouterLink to="/invoices" class="btn-icon text-gray-500"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></RouterLink>
       <h1 class="page-title">{{ isEdit ? 'Edit Invoice' : 'New Invoice' }}</h1>
+      <span v-if="!isEdit && nextNumber" class="text-sm text-gray-400 dark:text-slate-500">Next No: <strong class="text-gray-600 dark:text-slate-300">{{ nextNumber }}</strong></span>
     </div>
 
     <div class="card mb-4">

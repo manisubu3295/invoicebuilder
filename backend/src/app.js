@@ -168,6 +168,7 @@ async function startServer() {
     // alter: { drop: false } adds new columns but never drops existing ones — safe for production
     await sequelize.sync({ alter: { drop: false } });
     console.log('Database ready (PostgreSQL)');
+    await require('./services/testMode').loadTestMode();
     await seedIfEmpty();
     await markOverdueInvoices();
     setInterval(markOverdueInvoices, 60 * 60 * 1000);

@@ -169,6 +169,11 @@ const baseStyle = `
   thead th { border:1px solid #111827; padding:10px; background:#111827; color:#fff; font-size:11px; letter-spacing:0.5px; font-weight:600; }
 `;
 
+function testWatermarkHtml(isTest) {
+  if (!isTest) return '';
+  return `<div style="border:2px solid #dc2626;background:#fef2f2;color:#dc2626;text-align:center;font-weight:bold;font-size:13px;letter-spacing:0.5px;padding:10px;margin-bottom:20px;">TEST MODE — NOT A REAL DOCUMENT</div>`;
+}
+
 function buildQuotationHtml(quotation, client, items, settings = {}) {
   const sym = settings.currencySymbol || 'S$';
   const cur = settings.currency || 'SGD';
@@ -176,6 +181,8 @@ function buildQuotationHtml(quotation, client, items, settings = {}) {
   const addrLines = (settings.address || '').split('\n').filter(Boolean).map(l => `<div>${l}</div>`).join('');
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+
+  ${testWatermarkHtml(quotation.isTest)}
 
   <!-- Letterhead -->
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;">
@@ -273,6 +280,8 @@ function buildInvoiceHtml(invoice, client, items, settings = {}) {
   const addrLines = (settings.address || '').split('\n').filter(Boolean).map(l => `<div>${l}</div>`).join('');
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+
+  ${testWatermarkHtml(invoice.isTest)}
 
   <!-- Letterhead -->
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;">
@@ -395,6 +404,8 @@ function buildDeliveryInvoiceHtml(invoice, client, items, settings = {}) {
     : '';
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+
+  ${testWatermarkHtml(invoice.isTest)}
 
   <!-- Letterhead -->
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;">

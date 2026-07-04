@@ -15,28 +15,29 @@ router.get('/dashboard', async (req, res) => {
     const startOfYear = new Date(now.getFullYear(), 0, 1);
 
     const [monthRevenue] = await Invoice.findAll({
-      where: { status: 'paid', paidDate: { [Op.gte]: startOfMonth } },
+      where: { status: 'paid', paidDate: { [Op.gte]: startOfMonth }, isTest: false },
       attributes: [[fn('SUM', col('totalAmount')), 'total']],
       raw: true,
     });
 
     const [yearRevenue] = await Invoice.findAll({
-      where: { status: 'paid', paidDate: { [Op.gte]: startOfYear } },
+      where: { status: 'paid', paidDate: { [Op.gte]: startOfYear }, isTest: false },
       attributes: [[fn('SUM', col('totalAmount')), 'total']],
       raw: true,
     });
 
-    const outstandingCount = await Invoice.count({ where: { status: { [Op.in]: ['sent', 'overdue'] } } });
+    const outstandingCount = await Invoice.count({ where: { status: { [Op.in]: ['sent', 'overdue'] }, isTest: false } });
     const [outstandingAmount] = await Invoice.findAll({
-      where: { status: { [Op.in]: ['sent', 'overdue'] } },
+      where: { status: { [Op.in]: ['sent', 'overdue'] }, isTest: false },
       attributes: [[fn('SUM', col('totalAmount')), 'total']],
       raw: true,
     });
 
     const activeJobs = await Job.count({ where: { status: { [Op.in]: ['pending', 'in_transit'] } } });
-    const overdueInvoices = await Invoice.count({ where: { status: 'overdue' } });
+    const overdueInvoices = await Invoice.count({ where: { status: 'overdue', isTest: false } });
 
     const recentInvoices = await Invoice.findAll({
+      where: { isTest: false },
       include: [{ model: Client, as: 'client', attributes: ['companyName'] }],
       order: [['createdAt', 'DESC']],
       limit: 10,
@@ -107,7 +108,7 @@ router.get('/revenue', async (req, res) => {
     const endDate = new Date(year, 11, 31);
 
     const monthly = await Invoice.findAll({
-      where: { status: 'paid', paidDate: { [Op.between]: [startDate, endDate] } },
+      where: { status: 'paid', paidDate: { [Op.between]: [startDate, endDate] }, isTest: false },
       attributes: [
         [fn('strftime', '%m', col('paidDate')), 'month'],
         [fn('SUM', col('totalAmount')), 'total'],
@@ -132,7 +133,7 @@ router.get('/revenue', async (req, res) => {
 router.get('/aging', async (req, res) => {
   try {
     const invoices = await Invoice.findAll({
-      where: { status: { [Op.in]: ['sent', 'overdue'] } },
+      where: { status: { [Op.in]: ['sent', 'overdue'] }, isTest: false },
       include: [{ model: Client, as: 'client', attributes: ['companyName', 'email'] }],
       order: [['date', 'ASC']],
     });
@@ -166,6 +167,8 @@ router.get('/client-summary', async (req, res) => {
           model: Invoice,
           as: 'invoices',
           attributes: ['id', 'totalAmount', 'status'],
+          where: { isTest: false },
+          required: false,
         },
       ],
     });
@@ -201,7 +204,7 @@ router.get('/driver-summary', async (req, res) => {
           model: Job,
           as: 'jobs',
           attributes: ['id', 'status', 'fromDate', 'toDate'],
-          include: [{ model: Invoice, as: 'invoice', attributes: ['id', 'totalAmount', 'status'] }],
+          include: [{ model: Invoice, as: 'invoice', attributes: ['id', 'totalAmount', 'status'], where: { isTest: false }, required: false }],
         },
         { model: JobAttendance, as: 'attendance', attributes: ['id', 'date', 'status'] },
       ],
@@ -382,7 +385,7 @@ router.get('/pnl', async (req, res) => {
     const start = `${year}-01-01`, end = `${year}-12-31`;
 
     const paidInvoices = await Invoice.findAll({
-      where: { status: 'paid', paidDate: { [Op.between]: [start, end] } },
+      where: { status: 'paid', paidDate: { [Op.between]: [start, end] }, isTest: false },
       attributes: ['paidDate', 'totalAmount'],
       raw: true,
     });
@@ -406,7 +409,7 @@ router.get('/pnl', async (req, res) => {
     // Job profitability: per job, invoice revenue vs approved expenses
     const jobs = await Job.findAll({
       include: [
-        { model: Invoice, as: 'invoice', attributes: ['totalAmount', 'status'] },
+        { model: Invoice, as: 'invoice', attributes: ['totalAmount', 'status'], where: { isTest: false }, required: false },
         { model: Expense, as: 'expenses', where: { status: 'approved' }, required: false, attributes: ['amount'] },
         { model: Client, as: 'client', attributes: ['companyName'] },
         { model: Driver, as: 'driver', include: [{ model: User, as: 'user', attributes: ['name'] }] },
@@ -444,7 +447,7 @@ router.get('/soa/:clientId', async (req, res) => {
     if (!client) return res.status(404).json({ message: 'Client not found' });
 
     const invoices = await Invoice.findAll({
-      where: { clientId: req.params.clientId },
+      where: { clientId: req.params.clientId, isTest: false },
       include: [
         { model: InvoiceItem, as: 'items' },
         { model: Payment, as: 'payments', order: [['paymentDate', 'ASC']] },
@@ -470,7 +473,7 @@ router.get('/soa/:clientId/pdf', async (req, res) => {
     if (!client) return res.status(404).json({ message: 'Client not found' });
 
     const invoices = await Invoice.findAll({
-      where: { clientId: req.params.clientId },
+      where: { clientId: req.params.clientId, isTest: false },
       include: [{ model: Payment, as: 'payments', order: [['paymentDate', 'ASC']] }],
       order: [['date', 'ASC']],
     });
@@ -604,7 +607,7 @@ router.get('/job-summary', async (req, res) => {
         { model: Client, as: 'client', attributes: ['companyName'] },
         { model: Driver, as: 'driver', include: [{ model: User, as: 'user', attributes: ['name'] }] },
         { model: Vehicle, as: 'vehicle', attributes: ['plateNumber', 'type'] },
-        { model: Invoice, as: 'invoice', attributes: ['invoiceNo', 'totalAmount', 'status'] },
+        { model: Invoice, as: 'invoice', attributes: ['invoiceNo', 'totalAmount', 'status'], where: { isTest: false }, required: false },
       ],
       order: [['fromDate', 'DESC']],
     });
@@ -639,7 +642,7 @@ router.get('/job-summary', async (req, res) => {
 router.get('/ar-action', async (req, res) => {
   try {
     const invoices = await Invoice.findAll({
-      where: { status: { [Op.in]: ['sent', 'overdue'] } },
+      where: { status: { [Op.in]: ['sent', 'overdue'] }, isTest: false },
       include: [
         { model: Client, as: 'client', attributes: ['companyName', 'contactPerson', 'phone', 'email'] },
         { model: Payment, as: 'payments', attributes: ['amount', 'paymentDate'], order: [['paymentDate', 'DESC']] },

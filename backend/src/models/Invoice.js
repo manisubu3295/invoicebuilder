@@ -18,6 +18,7 @@ module.exports = (sequelize, DataTypes) => {
     invoiceType: { type: DataTypes.STRING, defaultValue: 'service' }, // service | delivery
     periodStart: { type: DataTypes.DATEONLY },
     periodEnd: { type: DataTypes.DATEONLY },
+    isTest: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   }, {
     tableName: 'invoices',
     timestamps: true,

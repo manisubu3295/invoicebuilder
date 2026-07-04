@@ -4,9 +4,10 @@ const { Op } = require('sequelize');
 const { Invoice, InvoiceItem, Client, Payment, CompanySettings, DeliveryLog, Job, Driver, Vehicle, User } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
-const { generateInvoiceNumber } = require('../services/invoiceNumber');
+const { createInvoiceWithNumber, generateInvoiceNumber } = require('../services/invoiceNumber');
 const { generateInvoicePDF } = require('../services/pdfService');
 const { sendInvoiceEmail } = require('../services/emailService');
+const { isTestModeEnabled } = require('../services/testMode');
 
 router.use(auth);
 
@@ -15,7 +16,7 @@ const num = (v) => (v === '' || v === null || v === undefined) ? null : parseFlo
 router.get('/', async (req, res) => {
   try {
     const { status, clientId, driverId, vehicleId, fromDate, toDate } = req.query;
-    const where = {};
+    const where = { isTest: isTestModeEnabled() };
     if (status) where.status = status;
     if (clientId) where.clientId = clientId;
     if (fromDate || toDate) {
@@ -54,9 +55,19 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/next-number', async (req, res) => {
+  try {
+    const nextNumber = await generateInvoiceNumber(req.query.clientId || null, isTestModeEnabled());
+    res.json({ nextNumber });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
-    const invoice = await Invoice.findByPk(req.params.id, {
+    const invoice = await Invoice.findOne({
+      where: { id: req.params.id, isTest: isTestModeEnabled() },
       include: [
         { model: Client, as: 'client' },
         { model: InvoiceItem, as: 'items' },
@@ -77,12 +88,10 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'clientId, date, and items are required' });
     }
 
-    const invoiceNo = await generateInvoiceNumber(clientId);
     const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
 
-    const invoice = await Invoice.create({
-      invoiceNo, clientId, date, dueDate, notes, quotationId, jobId,
-      totalAmount, status: 'draft',
+    const invoice = await createInvoiceWithNumber(clientId, {
+      date, dueDate, notes, quotationId, jobId, totalAmount, status: 'draft',
     });
 
     const invoiceItems = items.map((item, idx) => {
@@ -116,7 +125,8 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
 
 router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
   try {
-    const invoice = await Invoice.findByPk(req.params.id, {
+    const invoice = await Invoice.findOne({
+      where: { id: req.params.id, isTest: isTestModeEnabled() },
       include: [{ model: InvoiceItem, as: 'items' }],
     });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
@@ -161,7 +171,8 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
 
 router.get('/:id/pdf', async (req, res) => {
   try {
-    const invoice = await Invoice.findByPk(req.params.id, {
+    const invoice = await Invoice.findOne({
+      where: { id: req.params.id, isTest: isTestModeEnabled() },
       include: [{ model: Client, as: 'client' }, { model: InvoiceItem, as: 'items' }, { model: Payment, as: 'payments' }],
     });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
@@ -180,7 +191,8 @@ router.get('/:id/pdf', async (req, res) => {
 
 router.post('/:id/send-email', rbac('admin', 'staff'), async (req, res) => {
   try {
-    const invoice = await Invoice.findByPk(req.params.id, {
+    const invoice = await Invoice.findOne({
+      where: { id: req.params.id, isTest: isTestModeEnabled() },
       include: [{ model: Client, as: 'client' }, { model: InvoiceItem, as: 'items' }, { model: Payment, as: 'payments' }],
     });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
@@ -213,11 +225,10 @@ router.post('/from-deliveries', rbac('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'clientId, date, periodStart, periodEnd, and rows are required' });
     }
 
-    const invoiceNo = await generateInvoiceNumber(clientId);
     const totalAmount = rows.reduce((sum, r) => sum + parseFloat(r.totalAmount || 0), 0);
 
-    const invoice = await Invoice.create({
-      invoiceNo, clientId, date, dueDate, notes,
+    const invoice = await createInvoiceWithNumber(clientId, {
+      date, dueDate, notes,
       totalAmount, status: 'draft',
       invoiceType: 'delivery',
       periodStart, periodEnd,
@@ -258,12 +269,12 @@ router.patch('/:id/number', rbac('admin'), async (req, res) => {
     const newNo = (req.body.invoiceNo || '').trim();
     if (!newNo) return res.status(400).json({ message: 'Invoice number is required' });
 
-    const conflict = await Invoice.findOne({ where: { invoiceNo: newNo } });
+    const conflict = await Invoice.findOne({ where: { invoiceNo: newNo, isTest: isTestModeEnabled() } });
     if (conflict && conflict.id !== req.params.id) {
       return res.status(409).json({ message: `Invoice number "${newNo}" is already used by another invoice` });
     }
 
-    const invoice = await Invoice.findByPk(req.params.id);
+    const invoice = await Invoice.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
 
     await invoice.update({ invoiceNo: newNo });
@@ -275,7 +286,7 @@ router.patch('/:id/number', rbac('admin'), async (req, res) => {
 
 router.delete('/:id', rbac('admin', 'staff'), async (req, res) => {
   try {
-    const invoice = await Invoice.findByPk(req.params.id);
+    const invoice = await Invoice.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
     if (!['draft', 'cancelled'].includes(invoice.status)) {
       return res.status(400).json({ message: 'Only draft invoices can be deleted' });
@@ -290,7 +301,7 @@ router.delete('/:id', rbac('admin', 'staff'), async (req, res) => {
 
 router.post('/:id/mark-sent', rbac('admin', 'staff'), async (req, res) => {
   try {
-    const invoice = await Invoice.findByPk(req.params.id);
+    const invoice = await Invoice.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
     if (invoice.status !== 'draft') return res.status(400).json({ message: 'Only draft invoices can be marked as sent' });
     await invoice.update({ status: 'sent' });
@@ -302,7 +313,7 @@ router.post('/:id/mark-sent', rbac('admin', 'staff'), async (req, res) => {
 
 router.post('/:id/mark-paid', rbac('admin'), async (req, res) => {
   try {
-    const invoice = await Invoice.findByPk(req.params.id);
+    const invoice = await Invoice.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
 
     const { amount, paymentDate, method, reference, notes } = req.body;

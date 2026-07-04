@@ -3,9 +3,12 @@ import { ref, onMounted } from 'vue';
 import { settingsApi } from '../../api/index.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { useThemeStore } from '../../stores/theme.js';
+import { useAuthStore } from '../../stores/auth.js';
 
 const store = useSettingsStore();
 const themeStore = useThemeStore();
+const authStore = useAuthStore();
+const canToggleTestMode = ['admin', 'testadmin'].includes(authStore.user?.username);
 const saving = ref(false);
 const toast = ref(null);
 const form = ref({
@@ -15,6 +18,7 @@ const form = ref({
   logoImage: null, sealImage: null, signatureImage: null,
   invoicePrefix: 'INV', invoiceStartNumber: 1,
   quotationPrefix: 'QUO', quotationStartNumber: 1,
+  testModeEnabled: false,
 });
 
 function pickImage(field) {
@@ -209,6 +213,16 @@ onMounted(async () => {
             <input v-model.number="form.quotationStartNumber" type="number" min="1" class="input-field w-28"/>
           </div>
         </div>
+      </div>
+
+      <div v-if="canToggleTestMode" class="mt-6 pt-5 border-t border-gray-100 dark:border-slate-700">
+        <label class="flex items-start gap-2.5 cursor-pointer">
+          <input v-model="form.testModeEnabled" type="checkbox" class="w-4 h-4 mt-0.5 rounded accent-amber-600"/>
+          <span>
+            <span class="text-sm font-semibold text-gray-700 dark:text-slate-200">Test Mode</span>
+            <p class="text-xs text-gray-500 dark:text-slate-400 mt-0.5">While enabled, every new invoice/quotation is a dummy (numbered <code class="bg-gray-100 dark:bg-slate-700 px-1 rounded">TEST-...</code>) and real invoices/quotations are hidden from lists and the dashboard until you turn this back off. Reports always exclude test data.</p>
+          </span>
+        </label>
       </div>
     </div>
 

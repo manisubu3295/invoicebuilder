@@ -10,6 +10,7 @@ module.exports = (sequelize, DataTypes) => {
     status: { type: DataTypes.STRING, defaultValue: 'draft' },
     totalAmount: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
     notes: { type: DataTypes.TEXT },
+    isTest: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   }, {
     tableName: 'quotations',
     timestamps: true,

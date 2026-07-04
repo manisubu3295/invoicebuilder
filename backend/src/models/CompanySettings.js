@@ -24,5 +24,6 @@ module.exports = (sequelize) => {
     invoiceStartNumber: { type: DataTypes.INTEGER, defaultValue: 1 },
     quotationPrefix: { type: DataTypes.STRING(20), defaultValue: 'QUO' },
     quotationStartNumber: { type: DataTypes.INTEGER, defaultValue: 1 },
+    testModeEnabled: { type: DataTypes.BOOLEAN, defaultValue: false },
   }, { tableName: 'CompanySettings' });
 };

@@ -4,9 +4,10 @@ const { Op } = require('sequelize');
 const { Quotation, QuotationItem, Invoice, InvoiceItem, Client, CompanySettings } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
-const { generateQuotationNumber, generateInvoiceNumber } = require('../services/invoiceNumber');
+const { createQuotationWithNumber, createInvoiceWithNumber, generateQuotationNumber } = require('../services/invoiceNumber');
 const { generateQuotationPDF } = require('../services/pdfService');
 const { sendQuotationEmail } = require('../services/emailService');
+const { isTestModeEnabled } = require('../services/testMode');
 
 router.use(auth);
 
@@ -16,7 +17,7 @@ const dateStr = (v) => (v === '' || v === null || v === undefined) ? null : v;
 router.get('/', async (req, res) => {
   try {
     const { fromDate, toDate } = req.query;
-    const where = {};
+    const where = { isTest: isTestModeEnabled() };
     if (fromDate || toDate) {
       where.date = {};
       if (fromDate) where.date[Op.gte] = fromDate;
@@ -36,9 +37,19 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/next-number', async (req, res) => {
+  try {
+    const nextNumber = await generateQuotationNumber(req.query.clientId || null, isTestModeEnabled());
+    res.json({ nextNumber });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
-    const q = await Quotation.findByPk(req.params.id, {
+    const q = await Quotation.findOne({
+      where: { id: req.params.id, isTest: isTestModeEnabled() },
       include: [{ model: Client, as: 'client' }, { model: QuotationItem, as: 'items' }],
     });
     if (!q) return res.status(404).json({ message: 'Quotation not found' });
@@ -55,10 +66,9 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'clientId, date, and items are required' });
     }
 
-    const quotationNo = await generateQuotationNumber(clientId);
     const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
 
-    const quotation = await Quotation.create({ quotationNo, clientId, date, validUntil: validUntil || null, notes, totalAmount });
+    const quotation = await createQuotationWithNumber(clientId, { date, validUntil: validUntil || null, notes, totalAmount });
     const qItems = items.map((item, idx) => ({
       quotationId: quotation.id,
       sno: item.sno || idx + 1,
@@ -86,7 +96,7 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
 
 router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
   try {
-    const q = await Quotation.findByPk(req.params.id);
+    const q = await Quotation.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!q) return res.status(404).json({ message: 'Quotation not found' });
 
     const { date, validUntil, notes, status, items } = req.body;
@@ -124,7 +134,8 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
 
 router.get('/:id/pdf', async (req, res) => {
   try {
-    const q = await Quotation.findByPk(req.params.id, {
+    const q = await Quotation.findOne({
+      where: { id: req.params.id, isTest: isTestModeEnabled() },
       include: [{ model: Client, as: 'client' }, { model: QuotationItem, as: 'items' }],
     });
     if (!q) return res.status(404).json({ message: 'Quotation not found' });
@@ -141,7 +152,8 @@ router.get('/:id/pdf', async (req, res) => {
 
 router.post('/:id/send-email', rbac('admin', 'staff'), async (req, res) => {
   try {
-    const q = await Quotation.findByPk(req.params.id, {
+    const q = await Quotation.findOne({
+      where: { id: req.params.id, isTest: isTestModeEnabled() },
       include: [{ model: Client, as: 'client' }, { model: QuotationItem, as: 'items' }],
     });
     if (!q) return res.status(404).json({ message: 'Quotation not found' });
@@ -169,12 +181,12 @@ router.patch('/:id/number', rbac('admin'), async (req, res) => {
     const newNo = (req.body.quotationNo || '').trim();
     if (!newNo) return res.status(400).json({ message: 'Quotation number is required' });
 
-    const conflict = await Quotation.findOne({ where: { quotationNo: newNo } });
+    const conflict = await Quotation.findOne({ where: { quotationNo: newNo, isTest: isTestModeEnabled() } });
     if (conflict && conflict.id !== req.params.id) {
       return res.status(409).json({ message: `Quotation number "${newNo}" is already used by another quotation` });
     }
 
-    const q = await Quotation.findByPk(req.params.id);
+    const q = await Quotation.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!q) return res.status(404).json({ message: 'Quotation not found' });
 
     await q.update({ quotationNo: newNo });
@@ -186,7 +198,7 @@ router.patch('/:id/number', rbac('admin'), async (req, res) => {
 
 router.delete('/:id', rbac('admin', 'staff'), async (req, res) => {
   try {
-    const q = await Quotation.findByPk(req.params.id);
+    const q = await Quotation.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!q) return res.status(404).json({ message: 'Quotation not found' });
     if (q.status !== 'draft') {
       return res.status(400).json({ message: 'Only draft quotations can be deleted' });
@@ -201,16 +213,15 @@ router.delete('/:id', rbac('admin', 'staff'), async (req, res) => {
 
 router.post('/:id/convert-to-invoice', rbac('admin', 'staff'), async (req, res) => {
   try {
-    const q = await Quotation.findByPk(req.params.id, {
+    const q = await Quotation.findOne({
+      where: { id: req.params.id, isTest: isTestModeEnabled() },
       include: [{ model: Client, as: 'client' }, { model: QuotationItem, as: 'items' }],
     });
     if (!q) return res.status(404).json({ message: 'Quotation not found' });
     if (q.status === 'converted') return res.status(400).json({ message: 'Quotation already converted' });
 
-    const invoiceNo = await generateInvoiceNumber(q.clientId);
-    const invoice = await Invoice.create({
-      invoiceNo, quotationId: q.id, clientId: q.clientId,
-      date: new Date(), totalAmount: q.totalAmount, status: 'draft',
+    const invoice = await createInvoiceWithNumber(q.clientId, {
+      quotationId: q.id, date: new Date(), totalAmount: q.totalAmount, status: 'draft',
     });
 
     const invoiceItems = q.items.map(item => ({
