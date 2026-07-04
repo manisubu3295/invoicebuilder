@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { Invoice, InvoiceItem, Client, Payment, Job, Driver, Vehicle, User, JobAttendance, Expense, CompanySettings } = require('../models');
+const { Invoice, InvoiceItem, Client, Payment, Job, Driver, Vehicle, User, JobAttendance, Expense, CompanySettings, Quotation } = require('../models');
 const { sequelize } = require('../models');
 const { generateSOAPDF, generatePayrollPDF, generateFleetCompliancePDF } = require('../services/pdfService');
 const { Op, fn, col, literal } = require('sequelize');
@@ -35,6 +35,14 @@ router.get('/dashboard', async (req, res) => {
 
     const activeJobs = await Job.count({ where: { status: { [Op.in]: ['pending', 'in_transit'] } } });
     const overdueInvoices = await Invoice.count({ where: { status: 'overdue', isTest: false } });
+
+    const openQuotationStatuses = ['draft', 'sent', 'accepted'];
+    const openQuotationsCount = await Quotation.count({ where: { status: { [Op.in]: openQuotationStatuses }, isTest: false } });
+    const [openQuotationsAmount] = await Quotation.findAll({
+      where: { status: { [Op.in]: openQuotationStatuses }, isTest: false },
+      attributes: [[fn('SUM', col('totalAmount')), 'total']],
+      raw: true,
+    });
 
     const recentInvoices = await Invoice.findAll({
       where: { isTest: false },
@@ -91,6 +99,8 @@ router.get('/dashboard', async (req, res) => {
       outstandingAmount: parseFloat(outstandingAmount?.total || 0),
       activeJobs,
       overdueInvoices,
+      openQuotationsCount,
+      openQuotationsAmount: parseFloat(openQuotationsAmount?.total || 0),
       recentInvoices,
       todayJobs,
       expiryAlerts: expiryAlerts.sort((a, b) => a.days - b.days),
@@ -110,12 +120,12 @@ router.get('/revenue', async (req, res) => {
     const monthly = await Invoice.findAll({
       where: { status: 'paid', paidDate: { [Op.between]: [startDate, endDate] }, isTest: false },
       attributes: [
-        [fn('strftime', '%m', col('paidDate')), 'month'],
+        [fn('date_part', 'month', col('paidDate')), 'month'],
         [fn('SUM', col('totalAmount')), 'total'],
         [fn('COUNT', col('id')), 'count'],
       ],
-      group: [fn('strftime', '%m', col('paidDate'))],
-      order: [[fn('strftime', '%m', col('paidDate')), 'ASC']],
+      group: [fn('date_part', 'month', col('paidDate'))],
+      order: [[fn('date_part', 'month', col('paidDate')), 'ASC']],
       raw: true,
     });
 
