@@ -176,6 +176,42 @@ router.post('/:id/send-email', rbac('admin', 'staff'), async (req, res) => {
   }
 });
 
+router.post('/:id/mark-sent', rbac('admin', 'staff'), async (req, res) => {
+  try {
+    const q = await Quotation.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
+    if (!q) return res.status(404).json({ message: 'Quotation not found' });
+    if (q.status !== 'draft') return res.status(400).json({ message: 'Only draft quotations can be marked as sent' });
+    await q.update({ status: 'sent' });
+    res.json({ message: 'Quotation marked as sent' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/:id/mark-accepted', rbac('admin', 'staff'), async (req, res) => {
+  try {
+    const q = await Quotation.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
+    if (!q) return res.status(404).json({ message: 'Quotation not found' });
+    if (!['draft', 'sent'].includes(q.status)) return res.status(400).json({ message: 'Only draft or sent quotations can be marked as accepted' });
+    await q.update({ status: 'accepted' });
+    res.json({ message: 'Quotation marked as accepted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/:id/mark-rejected', rbac('admin', 'staff'), async (req, res) => {
+  try {
+    const q = await Quotation.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
+    if (!q) return res.status(404).json({ message: 'Quotation not found' });
+    if (!['draft', 'sent'].includes(q.status)) return res.status(400).json({ message: 'Only draft or sent quotations can be marked as rejected' });
+    await q.update({ status: 'rejected' });
+    res.json({ message: 'Quotation marked as rejected' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.patch('/:id/number', rbac('admin'), async (req, res) => {
   try {
     const newNo = (req.body.quotationNo || '').trim();

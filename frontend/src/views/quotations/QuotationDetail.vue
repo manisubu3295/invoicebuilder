@@ -88,6 +88,37 @@ async function sendEmail() {
   finally { actionLoading.value = ''; }
 }
 
+async function markSent() {
+  actionLoading.value = 'mark-sent';
+  try {
+    await quotationsApi.markSent(q.value.id);
+    q.value.status = 'sent';
+    showToast('Quotation marked as sent');
+  } catch (e) { showToast('Error: ' + (e.response?.data?.message || 'Update failed')); }
+  finally { actionLoading.value = ''; }
+}
+
+async function markAccepted() {
+  actionLoading.value = 'mark-accepted';
+  try {
+    await quotationsApi.markAccepted(q.value.id);
+    q.value.status = 'accepted';
+    showToast('Quotation marked as accepted');
+  } catch (e) { showToast('Error: ' + (e.response?.data?.message || 'Update failed')); }
+  finally { actionLoading.value = ''; }
+}
+
+async function markRejected() {
+  if (!confirm('Mark this quotation as rejected?')) return;
+  actionLoading.value = 'mark-rejected';
+  try {
+    await quotationsApi.markRejected(q.value.id);
+    q.value.status = 'rejected';
+    showToast('Quotation marked as rejected');
+  } catch (e) { showToast('Error: ' + (e.response?.data?.message || 'Update failed')); }
+  finally { actionLoading.value = ''; }
+}
+
 async function convertToInvoice() {
   if (!confirm('Convert this quotation to an invoice?')) return;
   actionLoading.value = 'convert';
@@ -148,6 +179,9 @@ onMounted(async () => {
         <RouterLink v-if="q.status === 'draft'" :to="`/quotations/${q.id}/edit`" class="btn-secondary">Edit</RouterLink>
         <button @click="viewPdf" class="btn-secondary">View PDF</button>
         <button v-if="['draft','sent'].includes(q.status) && q.client?.email" @click="sendEmail" :disabled="actionLoading === 'email'" class="btn-secondary">{{ actionLoading === 'email' ? 'Sending…' : 'Send Email' }}</button>
+        <button v-if="q.status === 'draft'" @click="markSent" :disabled="actionLoading === 'mark-sent'" class="btn-secondary">{{ actionLoading === 'mark-sent' ? 'Updating…' : 'Mark as Sent' }}</button>
+        <button v-if="['draft','sent'].includes(q.status)" @click="markAccepted" :disabled="actionLoading === 'mark-accepted'" class="btn-secondary text-green-700 border-green-200 hover:bg-green-50">{{ actionLoading === 'mark-accepted' ? 'Updating…' : 'Mark as Accepted' }}</button>
+        <button v-if="['draft','sent'].includes(q.status)" @click="markRejected" :disabled="actionLoading === 'mark-rejected'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'mark-rejected' ? 'Updating…' : 'Mark as Rejected' }}</button>
         <button v-if="['sent','accepted'].includes(q.status)" @click="convertToInvoice" :disabled="actionLoading === 'convert'" class="btn-primary">{{ actionLoading === 'convert' ? 'Converting…' : 'Convert to Invoice' }}</button>
         <button v-if="q.status === 'draft'" @click="deleteQuotation" :disabled="actionLoading === 'delete'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'delete' ? 'Deleting…' : 'Delete' }}</button>
       </div>

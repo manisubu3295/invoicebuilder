@@ -36,6 +36,9 @@ export const quotationsApi = {
   remove: (id) => api.delete(`/quotations/${id}`),
   getPdf: (id) => api.get(`/quotations/${id}/pdf`, { responseType: 'blob' }),
   sendEmail: (id) => api.post(`/quotations/${id}/send-email`),
+  markSent: (id) => api.post(`/quotations/${id}/mark-sent`),
+  markAccepted: (id) => api.post(`/quotations/${id}/mark-accepted`),
+  markRejected: (id) => api.post(`/quotations/${id}/mark-rejected`),
   convertToInvoice: (id) => api.post(`/quotations/${id}/convert-to-invoice`),
   updateNumber: (id, quotationNo) => api.patch(`/quotations/${id}/number`, { quotationNo }),
 };
