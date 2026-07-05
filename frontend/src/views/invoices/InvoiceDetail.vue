@@ -332,6 +332,7 @@ onMounted(async () => {
               <td class="px-3 py-3 border border-gray-200">
                 <span class="font-medium text-slate-800">{{ item.jobDescription }}</span>
                 <div v-if="item.itemType !== 'delivery' && item.fromDate" class="text-gray-400 text-xs mt-0.5">{{ fmtDate(item.fromDate) }} – {{ fmtDate(item.toDate) }}</div>
+                <div v-if="item.notes" class="text-gray-400 text-xs mt-0.5 italic">{{ item.notes }}</div>
               </td>
               <td v-if="hasRunSheet" class="px-3 py-3 text-center text-gray-600 text-xs border border-gray-200">{{ item.runSheetNo || '—' }}</td>
               <td class="px-3 py-3 text-center text-gray-600 text-xs border border-gray-200">{{ calcPeriod(item) }}</td>

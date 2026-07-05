@@ -120,7 +120,10 @@ function buildInvoiceRows(items, symbol, cur, payments = [], hasRunSheet = false
           return `
           <tr>
             <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;color:#9ca3af;background:#fafafa;">${sno}</td>
-            <td style="border:1px solid #e5e7eb;padding:10px;"><strong>${item.jobDescription || ''}</strong></td>
+            <td style="border:1px solid #e5e7eb;padding:10px;">
+              <strong>${item.jobDescription || ''}</strong>
+              ${item.notes ? `<div style="font-size:9px;color:#9ca3af;font-weight:normal;font-style:italic;">${item.notes}</div>` : ''}
+            </td>
             ${runSheetCell(item)}
             <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;font-size:11px;color:#4b5563;">${formatDate(date)}</td>
             <td style="border:1px solid #e5e7eb;padding:10px;text-align:right;font-size:11px;">1 &times; ${formatCurrency(unitPrice, symbol)}</td>
@@ -133,7 +136,10 @@ function buildInvoiceRows(items, symbol, cur, payments = [], hasRunSheet = false
     return `
       <tr>
         <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;color:#9ca3af;background:#fafafa;">${sno}</td>
-        <td style="border:1px solid #e5e7eb;padding:10px;"><strong>${item.jobDescription || ''}</strong></td>
+        <td style="border:1px solid #e5e7eb;padding:10px;">
+          <strong>${item.jobDescription || ''}</strong>
+          ${item.notes ? `<div style="font-size:9px;color:#9ca3af;font-weight:normal;font-style:italic;">${item.notes}</div>` : ''}
+        </td>
         ${runSheetCell(item)}
         ${buildItemPeriodCell(item)}
         ${buildItemRateCell(item, symbol)}
