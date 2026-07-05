@@ -16,6 +16,8 @@ const updating = ref(false);
 const gpsError = ref('');
 const checkinLoading = ref('');
 const forceEndLoading = ref('');
+const deletingAttendanceId = ref('');
+const deletingJob = ref(false);
 
 // Active attendance record for GPS ping loop
 let pingTimer = null;
@@ -138,6 +140,29 @@ async function forceEnd(record) {
   } finally { forceEndLoading.value = ''; }
 }
 
+async function deleteJob() {
+  if (!confirm('Permanently delete this job? This cannot be undone.')) return;
+  deletingJob.value = true;
+  try {
+    await jobsApi.removePermanent(job.value.id);
+    router.push('/jobs');
+  } catch (e) {
+    alert(e.response?.data?.message || 'Delete failed.');
+    deletingJob.value = false;
+  }
+}
+
+async function deleteAttendance(record) {
+  if (!confirm('Permanently delete this attendance record?')) return;
+  deletingAttendanceId.value = record.id;
+  try {
+    await jobAttendanceApi.remove(record.id);
+    attendance.value = attendance.value.filter(a => a.id !== record.id);
+  } catch (e) {
+    alert(e.response?.data?.message || 'Delete failed.');
+  } finally { deletingAttendanceId.value = ''; }
+}
+
 onMounted(async () => {
   try {
     job.value = (await jobsApi.get(route.params.id)).data;
@@ -173,6 +198,7 @@ onUnmounted(() => stopPingLoop());
         <button v-if="auth.isDriver && job.status === 'pending'" @click="updateStatus('in_transit')" :disabled="updating" class="btn-secondary">Start Job</button>
         <button v-if="auth.isDriver && job.status === 'in_transit'" @click="updateStatus('delivered')" :disabled="updating" class="btn-primary">Mark Delivered</button>
         <RouterLink v-if="!auth.isDriver" :to="`/jobs/${job.id}/edit`" class="btn-secondary">Edit</RouterLink>
+        <button v-if="auth.isAdmin" @click="deleteJob" :disabled="deletingJob" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ deletingJob ? 'Deleting…' : 'Delete Permanently' }}</button>
       </div>
     </div>
 
@@ -350,11 +376,12 @@ onUnmounted(() => stopPingLoop());
               <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">End</th>
               <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">End GPS</th>
               <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+              <th v-if="auth.isAdmin" class="w-10"></th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="!attendance.length">
-              <td colspan="7" class="text-center py-8 text-gray-400">No attendance records yet.</td>
+              <td :colspan="auth.isAdmin ? 8 : 7" class="text-center py-8 text-gray-400">No attendance records yet.</td>
             </tr>
             <tr v-for="a in attendance" :key="a.id" class="border-t border-gray-100 dark:border-slate-700/40 hover:bg-gray-50/50">
               <td class="px-5 py-3 font-medium text-gray-800">{{ fmtShort(a.date) }}</td>
@@ -383,6 +410,11 @@ onUnmounted(() => stopPingLoop());
                     {{ forceEndLoading === a.id ? '…' : 'Close' }}
                   </button>
                 </div>
+              </td>
+              <td v-if="auth.isAdmin" class="px-2 py-3">
+                <button @click="deleteAttendance(a)" :disabled="deletingAttendanceId === a.id" class="btn-icon text-gray-400 hover:text-red-600" title="Delete permanently">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
               </td>
             </tr>
           </tbody>

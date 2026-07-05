@@ -51,6 +51,7 @@ export const jobsApi = {
   create: (data) => api.post('/jobs', data),
   update: (id, data) => api.put(`/jobs/${id}`, data),
   updateStatus: (id, status) => api.put(`/jobs/${id}/status`, { status }),
+  removePermanent: (id) => api.delete(`/jobs/${id}/permanent`),
 };
 
 export const driversApi = {
@@ -94,6 +95,7 @@ export const jobAttendanceApi = {
   checkout: (id, data) => api.put(`/job-attendance/${id}/end`, data),
   ping: (id, data) => api.put(`/job-attendance/${id}/ping`, data),
   forceEnd: (id) => api.put(`/job-attendance/${id}/force-end`),
+  remove: (id) => api.delete(`/job-attendance/${id}`),
 };
 
 export const expensesApi = {

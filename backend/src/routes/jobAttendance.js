@@ -171,4 +171,17 @@ router.put('/:id/force-end', rbac('admin', 'staff'), async (req, res) => {
   }
 });
 
+// DELETE /:id — admin-only. Attendance is a leaf record (nothing references
+// it), so no dependent-record check is needed.
+router.delete('/:id', rbac('admin'), async (req, res) => {
+  try {
+    const record = await JobAttendance.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ message: 'Attendance record not found' });
+    await record.destroy();
+    res.json({ message: 'Attendance record deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;
