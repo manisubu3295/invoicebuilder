@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
-const { User } = require('../models');
+const { User, Driver, DeliveryLog, Expense } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 
@@ -51,6 +51,39 @@ router.put('/:id', async (req, res) => {
 
     await user.update(updates);
     res.json({ id: user.id, name: user.name, username: user.username, role: user.role, isActive: user.isActive });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Hard delete — permanently removes the account. Blocks self-delete, driver
+// logins (delete the driver record instead), and users referenced elsewhere.
+router.delete('/:id/permanent', async (req, res) => {
+  try {
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ message: 'You cannot delete your own account.' });
+    }
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const driverProfile = await Driver.findOne({ where: { userId: user.id } });
+    if (driverProfile) {
+      return res.status(409).json({ message: 'This is a driver login — delete the driver record from the Drivers page instead.' });
+    }
+
+    const [deliveryLogCount, expenseCount] = await Promise.all([
+      DeliveryLog.count({ where: { deliveredById: user.id } }),
+      Expense.count({ where: { approvedById: user.id } }),
+    ]);
+    const blockers = [];
+    if (deliveryLogCount) blockers.push(`${deliveryLogCount} delivery log(s)`);
+    if (expenseCount) blockers.push(`${expenseCount} approved expense(s)`);
+    if (blockers.length) {
+      return res.status(409).json({ message: `Cannot permanently delete: this user is referenced by ${blockers.join(', ')}.` });
+    }
+
+    await user.destroy();
+    res.json({ message: 'User permanently deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

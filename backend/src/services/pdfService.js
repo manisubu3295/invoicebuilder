@@ -115,7 +115,7 @@ function buildInvoiceRows(items, symbol, cur, payments = []) {
           return `
           <tr>
             <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;color:#9ca3af;background:#fafafa;">${sno}</td>
-            <td style="border:1px solid #e5e7eb;padding:10px;"><strong>${item.jobDescription || ''}</strong></td>
+            <td style="border:1px solid #e5e7eb;padding:10px;"><strong>${item.jobDescription || ''}</strong>${item.runSheetNo ? `<div style="font-size:10px;color:#9ca3af;font-weight:normal;">Run Sheet: ${item.runSheetNo}</div>` : ''}</td>
             <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;font-size:11px;color:#4b5563;">${formatDate(date)}</td>
             <td style="border:1px solid #e5e7eb;padding:10px;text-align:right;font-size:11px;">1 &times; ${formatCurrency(unitPrice, symbol)}</td>
             <td style="border:1px solid #e5e7eb;padding:10px;text-align:right;font-weight:bold;">${formatCurrency(unitPrice, symbol)}</td>
@@ -127,7 +127,7 @@ function buildInvoiceRows(items, symbol, cur, payments = []) {
     return `
       <tr>
         <td style="border:1px solid #e5e7eb;padding:10px;text-align:center;color:#9ca3af;background:#fafafa;">${sno}</td>
-        <td style="border:1px solid #e5e7eb;padding:10px;"><strong>${item.jobDescription || ''}</strong></td>
+        <td style="border:1px solid #e5e7eb;padding:10px;"><strong>${item.jobDescription || ''}</strong>${item.runSheetNo ? `<div style="font-size:10px;color:#9ca3af;font-weight:normal;">Run Sheet: ${item.runSheetNo}</div>` : ''}</td>
         ${buildItemPeriodCell(item)}
         ${buildItemRateCell(item, symbol)}
         <td style="border:1px solid #e5e7eb;padding:10px;text-align:right;font-weight:bold;">${formatCurrency(item.totalAmount, symbol)}</td>
@@ -376,7 +376,7 @@ function buildDeliveryInvoiceHtml(invoice, client, items, settings = {}) {
     <tr>
       <td style="border:1px solid #e5e7eb;padding:9px;text-align:center;font-size:11px;">${formatDate(item.fromDate)}</td>
       <td style="border:1px solid #e5e7eb;padding:9px;font-size:11px;color:#4b5563;">${item.deliveredBy || '—'}</td>
-      <td style="border:1px solid #e5e7eb;padding:9px;"><strong>${item.jobDescription || ''}</strong></td>
+      <td style="border:1px solid #e5e7eb;padding:9px;"><strong>${item.jobDescription || ''}</strong>${item.runSheetNo ? `<div style="font-size:9px;color:#9ca3af;font-weight:normal;">Run Sheet: ${item.runSheetNo}</div>` : ''}</td>
       <td style="border:1px solid #e5e7eb;padding:9px;text-align:right;">${parseFloat(item.quantity || 0).toFixed(3).replace(/\.?0+$/, '')}</td>
       <td style="border:1px solid #e5e7eb;padding:9px;text-align:right;">${formatCurrency(item.rate, sym)}</td>
       <td style="border:1px solid #e5e7eb;padding:9px;text-align:right;font-weight:bold;">${formatCurrency(item.totalAmount, sym)}</td>

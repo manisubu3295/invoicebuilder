@@ -6,5 +6,6 @@ module.exports = (sequelize, DataTypes) => {
     name: { type: DataTypes.STRING, allowNull: false },
     unit: { type: DataTypes.STRING, defaultValue: '' },
     unitPrice: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
+    isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   }, { tableName: 'item_catalog', timestamps: true });
 };

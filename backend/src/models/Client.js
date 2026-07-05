@@ -15,6 +15,7 @@ module.exports = (sequelize, DataTypes) => {
     quotationPrefix: { type: DataTypes.STRING(20), allowNull: true },
     quotationStartNumber: { type: DataTypes.INTEGER, allowNull: true },
     isTest: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    requiresRunSheet: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   }, {
     tableName: 'clients',
     timestamps: true,

@@ -1,7 +1,9 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { vehiclesApi } from '../../api/index.js';
+import { useAuthStore } from '../../stores/auth.js';
 
+const authStore = useAuthStore();
 const vehicles = ref([]);
 const loading = ref(true);
 const showForm = ref(false);
@@ -9,6 +11,7 @@ const saving = ref(false);
 const error = ref('');
 const editingId = ref(null);
 const form = ref(blank());
+const deletingId = ref('');
 
 function blank() {
   return { plateNumber: '', type: 'Lorry', size: '14ft', notes: '',
@@ -92,6 +95,16 @@ async function retire(v) {
   if (!confirm(`Retire ${v.plateNumber}? It will no longer be available for jobs.`)) return;
   await vehiclesApi.remove(v.id);
   v.status = 'retired';
+}
+
+async function deletePermanent(v) {
+  if (!confirm(`Permanently delete ${v.plateNumber}? This cannot be undone.`)) return;
+  deletingId.value = v.id;
+  try {
+    await vehiclesApi.removePermanent(v.id);
+    vehicles.value = vehicles.value.filter(x => x.id !== v.id);
+  } catch (e) { alert(e.response?.data?.message || 'Delete failed.'); }
+  finally { deletingId.value = ''; }
 }
 
 onMounted(async () => {
@@ -201,8 +214,9 @@ const statusBadge = (s) => s === 'active' ? 'badge-active' : s === 'maintenance'
           <button @click="openEdit(v)" class="btn-text h-7 px-3 text-xs text-blue-600">Edit</button>
           <button @click="retire(v)" class="btn-text h-7 px-3 text-xs text-red-600">Retire</button>
         </div>
-        <div v-else class="pt-2 border-t border-gray-100 dark:border-slate-700">
+        <div v-else class="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-slate-700">
           <span class="text-xs text-gray-400 italic">Retired</span>
+          <button v-if="authStore.isAdmin" @click="deletePermanent(v)" :disabled="deletingId === v.id" class="btn-text h-7 px-3 text-xs text-red-600">{{ deletingId === v.id ? 'Deleting…' : 'Delete Permanently' }}</button>
         </div>
       </div>
     </div>

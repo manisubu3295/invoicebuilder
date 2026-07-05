@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { Client } = require('../models');
+const { Client, Quotation, Invoice, Job, DeliveryLog } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 const { isTestModeEnabled } = require('../services/testMode');
@@ -27,7 +27,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', rbac('admin'), async (req, res) => {
   try {
-    const { companyName, clientCode, contactPerson, email, phone, address, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber } = req.body;
+    const { companyName, clientCode, contactPerson, email, phone, address, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber, requiresRunSheet } = req.body;
     if (!companyName || !clientCode) return res.status(400).json({ message: 'Company name and client code required' });
 
     const isTest = isTestModeEnabled();
@@ -41,6 +41,7 @@ router.post('/', rbac('admin'), async (req, res) => {
       invoiceStartNumber: invoiceStartNumber || null,
       quotationPrefix: quotationPrefix?.trim() || null,
       quotationStartNumber: quotationStartNumber || null,
+      requiresRunSheet: !!requiresRunSheet,
     });
     res.status(201).json(client);
   } catch (err) {
@@ -53,13 +54,14 @@ router.put('/:id', rbac('admin'), async (req, res) => {
     const client = await Client.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!client) return res.status(404).json({ message: 'Client not found' });
 
-    const { companyName, clientCode, contactPerson, email, phone, address, isActive, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber } = req.body;
+    const { companyName, clientCode, contactPerson, email, phone, address, isActive, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber, requiresRunSheet } = req.body;
     await client.update({
       companyName, clientCode: clientCode?.toUpperCase(), contactPerson, email, phone, address, isActive,
       invoicePrefix: invoicePrefix?.trim() || null,
       invoiceStartNumber: invoiceStartNumber || null,
       quotationPrefix: quotationPrefix?.trim() || null,
       quotationStartNumber: quotationStartNumber || null,
+      requiresRunSheet: requiresRunSheet !== undefined ? !!requiresRunSheet : client.requiresRunSheet,
     });
     res.json(client);
   } catch (err) {
@@ -73,6 +75,35 @@ router.delete('/:id', rbac('admin'), async (req, res) => {
     if (!client) return res.status(404).json({ message: 'Client not found' });
     await client.update({ isActive: false });
     res.json({ message: 'Client deactivated' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Hard delete — permanently removes the client. Admin-only, blocked if any
+// quotation/invoice/job/delivery log references it.
+router.delete('/:id/permanent', rbac('admin'), async (req, res) => {
+  try {
+    const client = await Client.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
+    if (!client) return res.status(404).json({ message: 'Client not found' });
+
+    const [quotationCount, invoiceCount, jobCount, deliveryLogCount] = await Promise.all([
+      Quotation.count({ where: { clientId: client.id } }),
+      Invoice.count({ where: { clientId: client.id } }),
+      Job.count({ where: { clientId: client.id } }),
+      DeliveryLog.count({ where: { clientId: client.id } }),
+    ]);
+    const blockers = [];
+    if (quotationCount) blockers.push(`${quotationCount} quotation(s)`);
+    if (invoiceCount) blockers.push(`${invoiceCount} invoice(s)`);
+    if (jobCount) blockers.push(`${jobCount} job(s)`);
+    if (deliveryLogCount) blockers.push(`${deliveryLogCount} delivery log(s)`);
+    if (blockers.length) {
+      return res.status(409).json({ message: `Cannot permanently delete: this client has ${blockers.join(', ')}. Remove those first.` });
+    }
+
+    await client.destroy();
+    res.json({ message: 'Client permanently deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

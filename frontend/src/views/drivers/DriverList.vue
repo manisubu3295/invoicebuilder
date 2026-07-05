@@ -1,7 +1,9 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { driversApi, vehiclesApi } from '../../api/index.js';
+import { useAuthStore } from '../../stores/auth.js';
 
+const authStore = useAuthStore();
 const drivers = ref([]);
 const vehicles = ref([]);
 const loading = ref(true);
@@ -10,6 +12,7 @@ const saving = ref(false);
 const error = ref('');
 const editingId = ref(null);
 const form = ref(blank());
+const deletingId = ref('');
 
 function blank() {
   return { name: '', username: '', phone: '', password: '', licenseNumber: '', licenseExpiry: '', licenseClass: '', nric: '', emergencyContact: '', emergencyPhone: '', assignedVehicleId: '', isActive: true, dailyRate: '' };
@@ -78,6 +81,16 @@ onMounted(async () => {
     [drivers.value, vehicles.value] = await Promise.all([driversApi.list().then(r => r.data), vehiclesApi.list().then(r => r.data)]);
   } finally { loading.value = false; }
 });
+
+async function deletePermanent(d) {
+  if (!confirm(`Permanently delete ${d.user?.name}? This removes the driver and their login entirely and cannot be undone.`)) return;
+  deletingId.value = d.id;
+  try {
+    await driversApi.removePermanent(d.id);
+    drivers.value = drivers.value.filter(x => x.id !== d.id);
+  } catch (e) { alert(e.response?.data?.message || 'Delete failed.'); }
+  finally { deletingId.value = ''; }
+}
 </script>
 
 <template>
@@ -173,9 +186,12 @@ onMounted(async () => {
             <td class="text-gray-600 text-sm tabular-nums">{{ d.dailyRate ? `S$${parseFloat(d.dailyRate).toFixed(2)}` : '—' }}</td>
             <td class="text-gray-500 text-sm">{{ d.assignedVehicle ? `${d.assignedVehicle.plateNumber} (${d.assignedVehicle.size})` : '—' }}</td>
             <td><span :class="d.user?.isActive ? 'badge-active' : 'badge-inactive'">{{ d.user?.isActive ? 'Active' : 'Inactive' }}</span></td>
-            <td>
+            <td class="flex gap-1">
               <button @click="openEdit(d)" class="btn-icon text-gray-400 hover:text-blue-600" title="Edit">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              </button>
+              <button v-if="authStore.isAdmin" @click="deletePermanent(d)" :disabled="deletingId === d.id" class="btn-icon text-gray-400 hover:text-red-600" title="Delete permanently">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
               </button>
             </td>
           </tr>

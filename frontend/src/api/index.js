@@ -11,6 +11,7 @@ export const clientsApi = {
   create: (data) => api.post('/clients', data),
   update: (id, data) => api.put(`/clients/${id}`, data),
   remove: (id) => api.delete(`/clients/${id}`),
+  removePermanent: (id) => api.delete(`/clients/${id}/permanent`),
 };
 
 export const invoicesApi = {
@@ -24,6 +25,7 @@ export const invoicesApi = {
   sendEmail: (id) => api.post(`/invoices/${id}/send-email`),
   markSent: (id) => api.post(`/invoices/${id}/mark-sent`),
   markPaid: (id, data) => api.post(`/invoices/${id}/mark-paid`, data),
+  cancel: (id) => api.post(`/invoices/${id}/cancel`),
   updateNumber: (id, invoiceNo) => api.patch(`/invoices/${id}/number`, { invoiceNo }),
 };
 
@@ -55,6 +57,7 @@ export const driversApi = {
   list: () => api.get('/drivers'),
   create: (data) => api.post('/drivers', data),
   update: (id, data) => api.put(`/drivers/${id}`, data),
+  removePermanent: (id) => api.delete(`/drivers/${id}/permanent`),
 };
 
 export const vehiclesApi = {
@@ -62,6 +65,7 @@ export const vehiclesApi = {
   create: (data) => api.post('/vehicles', data),
   update: (id, data) => api.put(`/vehicles/${id}`, data),
   remove: (id) => api.delete(`/vehicles/${id}`),
+  removePermanent: (id) => api.delete(`/vehicles/${id}/permanent`),
 };
 
 export const reportsApi = {
@@ -105,6 +109,7 @@ export const usersApi = {
   list: () => api.get('/users'),
   create: (data) => api.post('/users', data),
   update: (id, data) => api.put(`/users/${id}`, data),
+  removePermanent: (id) => api.delete(`/users/${id}/permanent`),
 };
 
 export const settingsApi = {
@@ -117,6 +122,7 @@ export const itemCatalogApi = {
   create: (data) => api.post('/item-catalog', data),
   update: (id, data) => api.put(`/item-catalog/${id}`, data),
   remove: (id) => api.delete(`/item-catalog/${id}`),
+  removePermanent: (id) => api.delete(`/item-catalog/${id}/permanent`),
 };
 
 export const deliveriesApi = {

@@ -28,7 +28,7 @@ watch(search, () => {
 async function load() {
   loading.value = true;
   try {
-    const { data } = await itemCatalogApi.list({ search: search.value || undefined });
+    const { data } = await itemCatalogApi.list({ search: search.value || undefined, includeInactive: true });
     items.value = data;
   } finally {
     loading.value = false;
@@ -78,11 +78,36 @@ async function save() {
   }
 }
 
-async function remove(item) {
-  if (!confirm(`Delete "${item.name}" from catalog?`)) return;
+async function deactivate(item) {
+  if (!confirm(`Deactivate "${item.name}"? It stops showing up as a suggestion but stays in the list here.`)) return;
   deleting.value = item.id;
   try {
     await itemCatalogApi.remove(item.id);
+    item.isActive = false;
+  } catch (e) {
+    alert(e.response?.data?.message || 'Deactivate failed.');
+  } finally {
+    deleting.value = null;
+  }
+}
+
+async function reactivate(item) {
+  deleting.value = item.id;
+  try {
+    await itemCatalogApi.update(item.id, { ...item, isActive: true });
+    item.isActive = true;
+  } catch (e) {
+    alert(e.response?.data?.message || 'Reactivate failed.');
+  } finally {
+    deleting.value = null;
+  }
+}
+
+async function deletePermanent(item) {
+  if (!confirm(`Permanently delete "${item.name}"? This cannot be undone.`)) return;
+  deleting.value = item.id;
+  try {
+    await itemCatalogApi.removePermanent(item.id);
     items.value = items.value.filter(i => i.id !== item.id);
   } catch (e) {
     alert(e.response?.data?.message || 'Delete failed.');
@@ -161,20 +186,28 @@ async function remove(item) {
             <th>Item Name</th>
             <th>Unit</th>
             <th class="text-right">Unit Price (S$)</th>
-            <th class="w-20"></th>
+            <th>Status</th>
+            <th class="w-28"></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in items" :key="item.id" :class="editingId === item.id ? 'bg-blue-50' : ''">
+          <tr v-for="item in items" :key="item.id" :class="[editingId === item.id ? 'bg-blue-50' : '', !item.isActive ? 'opacity-50' : '']">
             <td class="font-medium text-gray-900">{{ item.name }}</td>
             <td class="text-gray-500">{{ item.unit || '—' }}</td>
             <td class="text-right font-medium tabular-nums">{{ parseFloat(item.unitPrice).toFixed(2) }}</td>
+            <td><span :class="item.isActive ? 'badge-active' : 'badge-inactive'">{{ item.isActive ? 'Active' : 'Inactive' }}</span></td>
             <td>
               <div class="flex gap-0.5 justify-end">
                 <button @click="openEdit(item)" class="btn-icon text-gray-400 hover:text-blue-600" title="Edit">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                 </button>
-                <button @click="remove(item)" :disabled="deleting === item.id" class="btn-icon text-gray-400 hover:text-red-700 disabled:opacity-40" title="Delete">
+                <button v-if="item.isActive" @click="deactivate(item)" :disabled="deleting === item.id" class="btn-icon text-gray-400 hover:text-amber-600 disabled:opacity-40" title="Deactivate">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                </button>
+                <button v-else @click="reactivate(item)" :disabled="deleting === item.id" class="btn-icon text-gray-400 hover:text-emerald-600 disabled:opacity-40" title="Reactivate">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </button>
+                <button v-if="auth.isAdmin" @click="deletePermanent(item)" :disabled="deleting === item.id" class="btn-icon text-gray-400 hover:text-red-700 disabled:opacity-40" title="Delete permanently">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                 </button>
               </div>

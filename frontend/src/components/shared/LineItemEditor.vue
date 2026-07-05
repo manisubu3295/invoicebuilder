@@ -4,6 +4,7 @@ import { computed, ref } from 'vue';
 const props = defineProps({
   modelValue: Array,
   catalog: { type: Array, default: () => [] },
+  showRunSheet: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:modelValue']);
 
@@ -66,7 +67,7 @@ function addRow(type = 'service') {
   items.value = [...items.value, {
     sno: items.value.length + 1, itemType: type, jobDescription: '',
     fromDate: '', toDate: '', rate: '', rateType: 'per_week',
-    deliveryDate: '', deliveryDates: [], quantity: 1, unitPrice: '', totalAmount: 0,
+    deliveryDate: '', deliveryDates: [], quantity: 1, unitPrice: '', totalAmount: 0, runSheetNo: '',
   }];
 }
 
@@ -172,6 +173,13 @@ const inputCls = 'w-full bg-transparent focus:outline-none focus:ring-1 focus:ri
                 :class="inputCls"
                 placeholder="Search catalog or type custom…"
                 autocomplete="off"
+              />
+              <input
+                v-if="showRunSheet"
+                :value="item.runSheetNo"
+                @input="updateItem(i, 'runSheetNo', $event.target.value)"
+                :class="inputCls + ' text-xs text-gray-500 mt-0.5'"
+                placeholder="Run Sheet No. (optional)"
               />
             </td>
 

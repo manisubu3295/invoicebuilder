@@ -14,7 +14,7 @@ const sym = computed(() => settingsStore.settings?.currencySymbol || 'S$');
 
 const form = ref({
   clientId: '', date: new Date().toISOString().split('T')[0], dueDate: '', notes: '', quotationId: null,
-  items: [{ sno: 1, itemType: 'service', jobDescription: '', fromDate: '', toDate: '', rate: '', rateType: 'per_week', deliveryDate: '', deliveryDates: [], quantity: 1, unitPrice: '', totalAmount: 0 }],
+  items: [{ sno: 1, itemType: 'service', jobDescription: '', fromDate: '', toDate: '', rate: '', rateType: 'per_week', deliveryDate: '', deliveryDates: [], quantity: 1, unitPrice: '', totalAmount: 0, runSheetNo: '' }],
 });
 const clients = ref([]);
 const catalog = ref([]);
@@ -24,6 +24,7 @@ const loading = ref(false);
 const error = ref('');
 const nextNumber = ref('');
 const total = computed(() => form.value.items.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0));
+const showRunSheet = computed(() => !!clients.value.find(c => c.id === form.value.clientId)?.requiresRunSheet);
 
 async function loadQuotation(quotationId) {
   if (!quotationId) return;
@@ -145,7 +146,7 @@ async function submit() {
       </div>
 
       <div class="section-label mb-3">Line Items</div>
-      <LineItemEditor v-model="form.items" :catalog="catalog" />
+      <LineItemEditor v-model="form.items" :catalog="catalog" :show-run-sheet="showRunSheet" />
 
       <div class="flex justify-end mt-5 pt-5 border-t border-gray-100">
         <div class="text-right">

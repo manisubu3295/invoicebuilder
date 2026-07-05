@@ -124,8 +124,19 @@ async function confirmMarkPaid() {
   } finally { actionLoading.value = ''; }
 }
 
+async function cancelInvoice() {
+  if (!confirm('Cancel this invoice? It stays on record but is marked cancelled.')) return;
+  actionLoading.value = 'cancel';
+  try {
+    await invoicesApi.cancel(invoice.value.id);
+    await reload();
+    showToast('Invoice cancelled');
+  } catch (e) { showToast('Error: ' + (e.response?.data?.message || 'Cancel failed')); }
+  finally { actionLoading.value = ''; }
+}
+
 async function deleteInvoice() {
-  if (!confirm('Delete this draft invoice? This cannot be undone.')) return;
+  if (!confirm('Permanently delete this invoice? This cannot be undone.')) return;
   actionLoading.value = 'delete';
   try {
     await invoicesApi.remove(invoice.value.id);
@@ -219,7 +230,8 @@ onMounted(async () => {
         <button v-if="!['paid','cancelled'].includes(invoice.status)" @click="sendEmail" :disabled="actionLoading === 'email'" class="btn-secondary">{{ actionLoading === 'email' ? 'Sending…' : 'Send Email' }}</button>
         <button v-if="invoice.status === 'draft'" @click="markSent" :disabled="actionLoading === 'sent'" class="btn-secondary text-indigo-600 border-indigo-200 hover:bg-indigo-50">{{ actionLoading === 'sent' ? '…' : 'Mark as Sent' }}</button>
         <button v-if="['sent','overdue'].includes(invoice.status)" @click="openPaidModal" :disabled="actionLoading === 'paid'" class="btn-primary">{{ actionLoading === 'paid' ? '…' : 'Mark Paid' }}</button>
-        <button v-if="invoice.status === 'draft'" @click="deleteInvoice" :disabled="actionLoading === 'delete'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'delete' ? 'Deleting…' : 'Delete' }}</button>
+        <button v-if="!['cancelled','paid'].includes(invoice.status)" @click="cancelInvoice" :disabled="actionLoading === 'cancel'" class="btn-secondary text-amber-700 border-amber-200 hover:bg-amber-50">{{ actionLoading === 'cancel' ? '…' : 'Cancel Invoice' }}</button>
+        <button v-if="authStore.isAdmin && ['draft','cancelled'].includes(invoice.status)" @click="deleteInvoice" :disabled="actionLoading === 'delete'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'delete' ? 'Deleting…' : 'Delete Permanently' }}</button>
       </div>
     </div>
 
@@ -310,6 +322,7 @@ onMounted(async () => {
               <td class="px-3 py-3 border border-gray-200">
                 <span class="font-medium text-slate-800">{{ item.jobDescription }}</span>
                 <div v-if="item.itemType !== 'delivery' && item.fromDate" class="text-gray-400 text-xs mt-0.5">{{ fmtDate(item.fromDate) }} – {{ fmtDate(item.toDate) }}</div>
+                <div v-if="item.runSheetNo" class="text-gray-400 text-xs mt-0.5">Run Sheet: {{ item.runSheetNo }}</div>
               </td>
               <td class="px-3 py-3 text-center text-gray-600 text-xs border border-gray-200">{{ calcPeriod(item) }}</td>
               <td class="px-3 py-3 text-right text-xs border border-gray-200">

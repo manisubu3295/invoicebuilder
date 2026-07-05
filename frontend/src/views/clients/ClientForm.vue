@@ -6,7 +6,7 @@ import { clientsApi } from '../../api/index.js';
 const route = useRoute();
 const router = useRouter();
 const isEdit = computed(() => !!route.params.id);
-const form = ref({ companyName: '', clientCode: '', contactPerson: '', email: '', phone: '', address: '', invoicePrefix: '', invoiceStartNumber: '', quotationPrefix: '', quotationStartNumber: '' });
+const form = ref({ companyName: '', clientCode: '', contactPerson: '', email: '', phone: '', address: '', invoicePrefix: '', invoiceStartNumber: '', quotationPrefix: '', quotationStartNumber: '', requiresRunSheet: false });
 const loading = ref(false);
 const error = ref('');
 
@@ -78,6 +78,14 @@ async function submit() {
             <div v-if="form.invoicePrefix">Invoice numbers will use: <strong>{{ form.invoicePrefix.toUpperCase() }}-{{ String(form.invoiceStartNumber || 1).padStart(4, '0') }}</strong>, <strong>{{ form.invoicePrefix.toUpperCase() }}-{{ String((form.invoiceStartNumber || 1) + 1).padStart(4, '0') }}</strong>…</div>
             <div v-if="form.quotationPrefix">Quotation numbers will use: <strong>{{ form.quotationPrefix.toUpperCase() }}-{{ String(form.quotationStartNumber || 1).padStart(4, '0') }}</strong>, <strong>{{ form.quotationPrefix.toUpperCase() }}-{{ String((form.quotationStartNumber || 1) + 1).padStart(4, '0') }}</strong>…</div>
           </div>
+        </div>
+
+        <div class="pt-2 border-t border-gray-100">
+          <label class="flex items-center gap-2.5 cursor-pointer">
+            <input v-model="form.requiresRunSheet" type="checkbox" class="w-4 h-4 rounded accent-blue-600"/>
+            <span class="text-sm text-gray-700">Requires Run Sheet</span>
+          </label>
+          <p class="text-xs text-gray-400 mt-1 pl-6">When checked, invoices for this client show an optional "Run Sheet No." field on each line item.</p>
         </div>
       </div>
       <div class="flex gap-3 mt-7 pt-5 border-t border-gray-100">

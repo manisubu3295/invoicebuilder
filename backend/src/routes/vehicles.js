@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { Vehicle } = require('../models');
+const { Vehicle, Job, Expense, Driver } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 
@@ -47,6 +47,33 @@ router.delete('/:id', rbac('admin'), async (req, res) => {
     if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
     await vehicle.update({ status: 'retired' });
     res.json({ message: 'Vehicle retired' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Hard delete — permanently removes the vehicle. Admin-only, blocked if any
+// job/expense/driver assignment references it.
+router.delete('/:id/permanent', rbac('admin'), async (req, res) => {
+  try {
+    const vehicle = await Vehicle.findByPk(req.params.id);
+    if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
+
+    const [jobCount, expenseCount, driverCount] = await Promise.all([
+      Job.count({ where: { vehicleId: vehicle.id } }),
+      Expense.count({ where: { vehicleId: vehicle.id } }),
+      Driver.count({ where: { assignedVehicleId: vehicle.id } }),
+    ]);
+    const blockers = [];
+    if (jobCount) blockers.push(`${jobCount} job(s)`);
+    if (expenseCount) blockers.push(`${expenseCount} expense(s)`);
+    if (driverCount) blockers.push(`${driverCount} driver(s) assigned`);
+    if (blockers.length) {
+      return res.status(409).json({ message: `Cannot permanently delete: this vehicle has ${blockers.join(', ')}. Remove those first.` });
+    }
+
+    await vehicle.destroy();
+    res.json({ message: 'Vehicle permanently deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

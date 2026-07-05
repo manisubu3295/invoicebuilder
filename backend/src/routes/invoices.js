@@ -117,6 +117,7 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
         quantity: num(item.quantity),
         unitPrice: num(item.unitPrice),
         totalAmount: num(item.totalAmount),
+        runSheetNo: item.runSheetNo || null,
       };
     });
     await InvoiceItem.bulkCreate(invoiceItems);
@@ -161,6 +162,7 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
           quantity: num(item.quantity),
           unitPrice: num(item.unitPrice),
           totalAmount: num(item.totalAmount),
+          runSheetNo: item.runSheetNo || null,
         };
       });
       await InvoiceItem.bulkCreate(invoiceItems);
@@ -293,16 +295,37 @@ router.patch('/:id/number', rbac('admin'), async (req, res) => {
   }
 });
 
-router.delete('/:id', rbac('admin', 'staff'), async (req, res) => {
+// Soft delete — cancels the invoice without removing it, keeping it in reports/history.
+router.post('/:id/cancel', rbac('admin', 'staff'), async (req, res) => {
+  try {
+    const invoice = await Invoice.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+    if (invoice.status === 'cancelled') return res.status(400).json({ message: 'Invoice is already cancelled' });
+    if (invoice.status === 'paid') return res.status(400).json({ message: 'A paid invoice cannot be cancelled' });
+    await invoice.update({ status: 'cancelled' });
+    res.json({ message: 'Invoice cancelled' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Hard delete — permanently removes the invoice. Admin-only, and only for
+// draft/cancelled invoices with no payment history (use Cancel first for
+// anything else, or record why the payment must be removed manually).
+router.delete('/:id', rbac('admin'), async (req, res) => {
   try {
     const invoice = await Invoice.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
     if (!['draft', 'cancelled'].includes(invoice.status)) {
-      return res.status(400).json({ message: 'Only draft invoices can be deleted' });
+      return res.status(400).json({ message: 'Only draft or cancelled invoices can be permanently deleted — cancel it first' });
+    }
+    const paymentCount = await Payment.count({ where: { invoiceId: invoice.id } });
+    if (paymentCount > 0) {
+      return res.status(409).json({ message: `Cannot permanently delete: this invoice has ${paymentCount} payment record(s) against it.` });
     }
     await InvoiceItem.destroy({ where: { invoiceId: invoice.id } });
     await invoice.destroy();
-    res.json({ message: 'Invoice deleted' });
+    res.json({ message: 'Invoice permanently deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
