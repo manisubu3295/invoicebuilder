@@ -232,16 +232,39 @@ router.patch('/:id/number', rbac('admin'), async (req, res) => {
   }
 });
 
-router.delete('/:id', rbac('admin', 'staff'), async (req, res) => {
+// Soft delete — cancels the quotation without removing it, keeping it in
+// history. Distinct from "Rejected" (client said no) — this is for voiding
+// a quotation that shouldn't have been created / is no longer relevant.
+router.post('/:id/cancel', rbac('admin', 'staff'), async (req, res) => {
   try {
     const q = await Quotation.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!q) return res.status(404).json({ message: 'Quotation not found' });
-    if (q.status !== 'draft') {
-      return res.status(400).json({ message: 'Only draft quotations can be deleted' });
+    if (q.status === 'cancelled') return res.status(400).json({ message: 'Quotation is already cancelled' });
+    if (q.status === 'converted') return res.status(400).json({ message: 'A converted quotation cannot be cancelled' });
+    await q.update({ status: 'cancelled' });
+    res.json({ message: 'Quotation cancelled' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Hard delete — permanently removes the quotation. Admin-only, and only for
+// draft/cancelled quotations with no invoice created from them (use Cancel
+// first for anything else).
+router.delete('/:id', rbac('admin'), async (req, res) => {
+  try {
+    const q = await Quotation.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
+    if (!q) return res.status(404).json({ message: 'Quotation not found' });
+    if (!['draft', 'cancelled'].includes(q.status)) {
+      return res.status(400).json({ message: 'Only draft or cancelled quotations can be permanently deleted — cancel it first' });
+    }
+    const invoiceCount = await Invoice.count({ where: { quotationId: q.id } });
+    if (invoiceCount > 0) {
+      return res.status(409).json({ message: `Cannot permanently delete: an invoice was created from this quotation.` });
     }
     await QuotationItem.destroy({ where: { quotationId: q.id } });
     await q.destroy();
-    res.json({ message: 'Quotation deleted' });
+    res.json({ message: 'Quotation permanently deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

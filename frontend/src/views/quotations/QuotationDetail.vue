@@ -130,8 +130,19 @@ async function convertToInvoice() {
   finally { actionLoading.value = ''; }
 }
 
+async function cancelQuotation() {
+  if (!confirm('Cancel this quotation? It stays on record but is marked cancelled.')) return;
+  actionLoading.value = 'cancel';
+  try {
+    await quotationsApi.cancel(q.value.id);
+    q.value.status = 'cancelled';
+    showToast('Quotation cancelled');
+  } catch (e) { showToast('Error: ' + (e.response?.data?.message || 'Cancel failed')); }
+  finally { actionLoading.value = ''; }
+}
+
 async function deleteQuotation() {
-  if (!confirm('Delete this draft quotation? This cannot be undone.')) return;
+  if (!confirm('Permanently delete this quotation? This cannot be undone.')) return;
   actionLoading.value = 'delete';
   try {
     await quotationsApi.remove(q.value.id);
@@ -183,7 +194,8 @@ onMounted(async () => {
         <button v-if="['draft','sent'].includes(q.status)" @click="markAccepted" :disabled="actionLoading === 'mark-accepted'" class="btn-secondary text-green-700 border-green-200 hover:bg-green-50">{{ actionLoading === 'mark-accepted' ? 'Updating…' : 'Mark as Accepted' }}</button>
         <button v-if="['draft','sent'].includes(q.status)" @click="markRejected" :disabled="actionLoading === 'mark-rejected'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'mark-rejected' ? 'Updating…' : 'Mark as Rejected' }}</button>
         <button v-if="['sent','accepted'].includes(q.status)" @click="convertToInvoice" :disabled="actionLoading === 'convert'" class="btn-primary">{{ actionLoading === 'convert' ? 'Converting…' : 'Convert to Invoice' }}</button>
-        <button v-if="q.status === 'draft'" @click="deleteQuotation" :disabled="actionLoading === 'delete'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'delete' ? 'Deleting…' : 'Delete' }}</button>
+        <button v-if="!['cancelled','converted'].includes(q.status)" @click="cancelQuotation" :disabled="actionLoading === 'cancel'" class="btn-secondary text-amber-700 border-amber-200 hover:bg-amber-50">{{ actionLoading === 'cancel' ? '…' : 'Cancel Quotation' }}</button>
+        <button v-if="authStore.isAdmin && ['draft','cancelled'].includes(q.status)" @click="deleteQuotation" :disabled="actionLoading === 'delete'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'delete' ? 'Deleting…' : 'Delete Permanently' }}</button>
       </div>
     </div>
 

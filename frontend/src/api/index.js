@@ -41,6 +41,7 @@ export const quotationsApi = {
   markSent: (id) => api.post(`/quotations/${id}/mark-sent`),
   markAccepted: (id) => api.post(`/quotations/${id}/mark-accepted`),
   markRejected: (id) => api.post(`/quotations/${id}/mark-rejected`),
+  cancel: (id) => api.post(`/quotations/${id}/cancel`),
   convertToInvoice: (id) => api.post(`/quotations/${id}/convert-to-invoice`),
   updateNumber: (id, quotationNo) => api.patch(`/quotations/${id}/number`, { quotationNo }),
 };
