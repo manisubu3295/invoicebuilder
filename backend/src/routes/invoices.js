@@ -261,6 +261,8 @@ router.post('/from-deliveries', rbac('admin', 'staff'), async (req, res) => {
       totalAmount: parseFloat(row.totalAmount || 0),
       deliveryLogId: row.deliveryLogId,
       deliveredBy: row.deliveredBy,
+      runSheetNo: row.runSheetNo || null,
+      notes: row.notes || null,
     }));
     await InvoiceItem.bulkCreate(invoiceItems);
 

@@ -375,8 +375,11 @@ function buildDeliveryInvoiceHtml(invoice, client, items, settings = {}) {
   const rows = sorted.map((item, idx) => `
     <tr>
       <td style="border:1px solid #e5e7eb;padding:9px;text-align:center;font-size:11px;">${formatDate(item.fromDate)}</td>
-      <td style="border:1px solid #e5e7eb;padding:9px;font-size:11px;color:#4b5563;">${item.deliveredBy || '—'}</td>
-      <td style="border:1px solid #e5e7eb;padding:9px;"><strong>${item.jobDescription || ''}</strong>${item.runSheetNo ? `<div style="font-size:9px;color:#9ca3af;font-weight:normal;">Run Sheet: ${item.runSheetNo}</div>` : ''}</td>
+      <td style="border:1px solid #e5e7eb;padding:9px;">
+        <strong>${item.jobDescription || ''}</strong>
+        ${item.runSheetNo ? `<div style="font-size:9px;color:#9ca3af;font-weight:normal;">Run Sheet: ${item.runSheetNo}</div>` : ''}
+        ${item.notes ? `<div style="font-size:9px;color:#9ca3af;font-weight:normal;font-style:italic;">${item.notes}</div>` : ''}
+      </td>
       <td style="border:1px solid #e5e7eb;padding:9px;text-align:right;">${parseFloat(item.quantity || 0).toFixed(3).replace(/\.?0+$/, '')}</td>
       <td style="border:1px solid #e5e7eb;padding:9px;text-align:right;">${formatCurrency(item.rate, sym)}</td>
       <td style="border:1px solid #e5e7eb;padding:9px;text-align:right;font-weight:bold;">${formatCurrency(item.totalAmount, sym)}</td>
@@ -387,15 +390,15 @@ function buildDeliveryInvoiceHtml(invoice, client, items, settings = {}) {
   const balance = Math.max(0, total - paid);
   const totalRows = `
     <tr>
-      <td colspan="5" style="border:1px solid #e5e7eb;padding:9px;text-align:right;color:#6b7280;font-size:11px;">Subtotal</td>
+      <td colspan="4" style="border:1px solid #e5e7eb;padding:9px;text-align:right;color:#6b7280;font-size:11px;">Subtotal</td>
       <td style="border:1px solid #e5e7eb;padding:9px;text-align:right;color:#6b7280;font-size:11px;">${formatCurrency(total, sym)}</td>
     </tr>
     ${paid > 0 ? `<tr>
-      <td colspan="5" style="border:1px solid #e5e7eb;padding:9px;text-align:right;color:#16a34a;font-size:11px;">Amount Paid</td>
+      <td colspan="4" style="border:1px solid #e5e7eb;padding:9px;text-align:right;color:#16a34a;font-size:11px;">Amount Paid</td>
       <td style="border:1px solid #e5e7eb;padding:9px;text-align:right;color:#16a34a;font-size:11px;">(${formatCurrency(paid, sym)})</td>
     </tr>` : ''}
     <tr style="background:#111827;color:#fff;">
-      <td colspan="5" style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;letter-spacing:1px;">${balance === 0 ? 'PAID IN FULL' : `BALANCE DUE (${cur})`}</td>
+      <td colspan="4" style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;letter-spacing:1px;">${balance === 0 ? 'PAID IN FULL' : `BALANCE DUE (${cur})`}</td>
       <td style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(balance, sym)}</td>
     </tr>`;
 
@@ -446,12 +449,11 @@ function buildDeliveryInvoiceHtml(invoice, client, items, settings = {}) {
   <!-- Delivery Items Table -->
   <table style="margin-bottom:24px;">
     <thead><tr>
-      <th style="width:13%;text-align:center;">DATE</th>
-      <th style="width:16%;text-align:left;">DELIVERED BY</th>
+      <th style="width:15%;text-align:center;">DATE</th>
       <th style="text-align:left;">ITEM / DESCRIPTION</th>
-      <th style="width:9%;text-align:right;">QTY</th>
-      <th style="width:14%;text-align:right;">UNIT PRICE</th>
-      <th style="width:14%;text-align:right;">AMOUNT (${cur})</th>
+      <th style="width:10%;text-align:right;">QTY</th>
+      <th style="width:16%;text-align:right;">UNIT PRICE</th>
+      <th style="width:16%;text-align:right;">AMOUNT (${cur})</th>
     </tr></thead>
     <tbody>${rows}${totalRows}</tbody>
   </table>

@@ -89,6 +89,7 @@ router.get('/preview', rbac('admin', 'staff'), async (req, res) => {
           unitPrice: parseFloat(item.unitPrice),
           totalAmount: parseFloat(item.totalAmount),
           notes: item.notes || '',
+          runSheetNo: item.runSheetNo || '',
         });
       });
     });
@@ -144,6 +145,7 @@ router.post('/', async (req, res) => {
       unitPrice: parseFloat(item.unitPrice || 0),
       totalAmount: parseFloat(item.quantity || 0) * parseFloat(item.unitPrice || 0),
       notes: item.notes || '',
+      runSheetNo: item.runSheetNo || null,
     }));
     await DeliveryItem.bulkCreate(deliveryItems);
 
@@ -183,6 +185,7 @@ router.put('/:id', async (req, res) => {
         unitPrice: parseFloat(item.unitPrice || 0),
         totalAmount: parseFloat(item.quantity || 0) * parseFloat(item.unitPrice || 0),
         notes: item.notes || '',
+        runSheetNo: item.runSheetNo || null,
       })));
     }
 

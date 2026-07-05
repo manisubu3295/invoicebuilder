@@ -31,6 +31,7 @@ function onClientChange() {
   const cats = clientCategories.value;
   form.value.categoryId = cats.length === 1 ? cats[0].id : '';
 }
+const showRunSheet = computed(() => !!clients.value.find(c => c.id === form.value.clientId)?.requiresRunSheet);
 
 // ── Delivered By combobox ──────────────────────────────────────────
 const delivererSearch = ref('');
@@ -67,7 +68,7 @@ function onDelivererBlur() {
 
 // ── Items ──────────────────────────────────────────────────────────
 function blankItem() {
-  return { _search: '', _catalogId: '', itemName: '', quantity: 1, unitPrice: '', notes: '' };
+  return { _search: '', _catalogId: '', itemName: '', quantity: 1, unitPrice: '', notes: '', runSheetNo: '' };
 }
 
 const openCatalogIdx = ref(null);
@@ -168,6 +169,7 @@ onMounted(async () => {
           quantity: parseFloat(i.quantity),
           unitPrice: parseFloat(i.unitPrice),
           notes: i.notes || '',
+          runSheetNo: i.runSheetNo || '',
         };
       });
     } catch { error.value = 'Failed to load delivery entry.'; }
@@ -383,6 +385,15 @@ async function save() {
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
                   </div>
+
+                  <!-- Run Sheet No. — only for clients that require it -->
+                  <input
+                    v-if="showRunSheet"
+                    v-model="item.runSheetNo"
+                    type="text"
+                    placeholder="Run Sheet No."
+                    class="mt-1.5 w-full text-xs text-gray-600 dark:text-slate-300 bg-transparent border-0 border-b border-dashed border-gray-200 dark:border-slate-700 focus:outline-none focus:border-blue-400 placeholder-gray-300 dark:placeholder-slate-600"
+                  />
 
                   <!-- Per-row note (minimal, below) -->
                   <input

@@ -20,6 +20,7 @@ module.exports = (sequelize, DataTypes) => {
     deliveryLogId: { type: DataTypes.UUID },
     deliveredBy: { type: DataTypes.STRING },
     runSheetNo: { type: DataTypes.STRING, allowNull: true },
+    notes: { type: DataTypes.STRING, allowNull: true },
   }, {
     tableName: 'invoice_items',
     timestamps: false,
