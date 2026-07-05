@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const fs = require('fs');
 const { Op } = require('sequelize');
-const { Invoice, InvoiceItem, Client, Payment, CompanySettings, DeliveryLog, Job, Driver, Vehicle, User, Quotation } = require('../models');
+const { Invoice, InvoiceItem, Client, Payment, CompanySettings, DeliveryLog, Job, Driver, Vehicle, User, Quotation, Category } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 const { createInvoiceWithNumber, generateInvoiceNumber } = require('../services/invoiceNumber');
@@ -39,6 +39,7 @@ router.get('/', async (req, res) => {
       where,
       include: [
         { model: Client, as: 'client', attributes: ['id', 'companyName', 'clientCode', 'email'] },
+        { model: Category, as: 'category', attributes: ['id', 'name', 'invoicePrefix'] },
         { model: InvoiceItem, as: 'items' },
         jobInclude,
       ],
@@ -57,7 +58,7 @@ router.get('/', async (req, res) => {
 
 router.get('/next-number', async (req, res) => {
   try {
-    const nextNumber = await generateInvoiceNumber(req.query.clientId || null, isTestModeEnabled());
+    const nextNumber = await generateInvoiceNumber(req.query.clientId || null, isTestModeEnabled(), req.query.categoryId || null);
     res.json({ nextNumber });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -70,6 +71,7 @@ router.get('/:id', async (req, res) => {
       where: { id: req.params.id, isTest: isTestModeEnabled() },
       include: [
         { model: Client, as: 'client' },
+        { model: Category, as: 'category', attributes: ['id', 'name', 'invoicePrefix'] },
         { model: InvoiceItem, as: 'items' },
         { model: Payment, as: 'payments' },
       ],
@@ -83,10 +85,11 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', rbac('admin', 'staff'), async (req, res) => {
   try {
-    const { clientId, date, dueDate, items, notes, quotationId, jobId } = req.body;
+    const { clientId, date, dueDate, items, notes, quotationId, jobId, categoryId } = req.body;
     if (!clientId || !date || !items?.length) {
       return res.status(400).json({ message: 'clientId, date, and items are required' });
     }
+    if (!categoryId) return res.status(400).json({ message: 'Category is required' });
 
     let quotation = null;
     if (quotationId) {
@@ -98,7 +101,7 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
     const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
 
     const invoice = await createInvoiceWithNumber(clientId, {
-      date, dueDate: dueDate || null, notes, quotationId: quotationId || null, jobId, totalAmount, status: 'draft',
+      date, dueDate: dueDate || null, notes, quotationId: quotationId || null, jobId, totalAmount, status: 'draft', categoryId,
     });
 
     const invoiceItems = items.map((item, idx) => {
@@ -231,10 +234,11 @@ router.post('/:id/send-email', rbac('admin', 'staff'), async (req, res) => {
 // POST /api/invoices/from-deliveries — create delivery-type invoice from preview rows
 router.post('/from-deliveries', rbac('admin', 'staff'), async (req, res) => {
   try {
-    const { clientId, date, dueDate, periodStart, periodEnd, notes, rows } = req.body;
+    const { clientId, date, dueDate, periodStart, periodEnd, notes, rows, categoryId } = req.body;
     if (!clientId || !date || !rows?.length || !periodStart || !periodEnd) {
       return res.status(400).json({ message: 'clientId, date, periodStart, periodEnd, and rows are required' });
     }
+    if (!categoryId) return res.status(400).json({ message: 'Category is required' });
 
     const totalAmount = rows.reduce((sum, r) => sum + parseFloat(r.totalAmount || 0), 0);
 
@@ -242,7 +246,7 @@ router.post('/from-deliveries', rbac('admin', 'staff'), async (req, res) => {
       date, dueDate: dueDate || null, notes,
       totalAmount, status: 'draft',
       invoiceType: 'delivery',
-      periodStart, periodEnd,
+      periodStart, periodEnd, categoryId,
     });
 
     const invoiceItems = rows.map((row, idx) => ({

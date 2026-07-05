@@ -1,4 +1,4 @@
-const { Invoice, Quotation, CompanySettings, Client } = require('../models');
+const { Invoice, Quotation, CompanySettings, Client, Category } = require('../models');
 const { Op } = require('sequelize');
 const { isTestModeEnabled } = require('./testMode');
 
@@ -12,17 +12,36 @@ async function getSettings() {
   };
 }
 
-async function resolveInvoicePrefix(clientId) {
+// When a category is attached to an invoice, the number combines the
+// client's identifier (custom prefix override, or its short clientCode)
+// with the category's own prefix, e.g. "SMM-TRN-0001". That combination
+// gets its own sequence starting at 1 — it's a fresh numbering scheme,
+// independent of the client's plain invoiceStartNumber.
+async function resolveInvoicePrefix(clientId, categoryId) {
+  let clientPart = null;
+  let clientStartNumber = null;
   if (clientId) {
     const client = await Client.findByPk(clientId, {
-      attributes: ['invoicePrefix', 'invoiceStartNumber'],
+      attributes: ['invoicePrefix', 'invoiceStartNumber', 'clientCode'],
     });
-    if (client?.invoicePrefix?.trim()) {
-      return {
-        prefix: client.invoicePrefix.trim(),
-        startNumber: parseInt(client.invoiceStartNumber ?? 1, 10) || 1,
-      };
+    if (client) {
+      clientPart = client.invoicePrefix?.trim() || client.clientCode?.trim() || null;
+      clientStartNumber = parseInt(client.invoiceStartNumber ?? 1, 10) || 1;
     }
+  }
+
+  if (categoryId) {
+    const category = await Category.findByPk(categoryId, { attributes: ['invoicePrefix'] });
+    const categoryPart = category?.invoicePrefix?.trim();
+    if (categoryPart) {
+      const s = await getSettings();
+      const base = clientPart || s.invoicePrefix;
+      return { prefix: `${base}-${categoryPart}`, startNumber: 1 };
+    }
+  }
+
+  if (clientPart) {
+    return { prefix: clientPart, startNumber: clientStartNumber || 1 };
   }
   const s = await getSettings();
   return { prefix: s.invoicePrefix, startNumber: s.invoiceStartNumber };
@@ -44,8 +63,8 @@ async function resolveQuotationPrefix(clientId) {
   return { prefix: s.quotationPrefix, startNumber: s.quotationStartNumber };
 }
 
-async function generateInvoiceNumber(clientId, isTest = false) {
-  const { prefix: basePrefix, startNumber: baseStart } = await resolveInvoicePrefix(clientId);
+async function generateInvoiceNumber(clientId, isTest = false, categoryId = null) {
+  const { prefix: basePrefix, startNumber: baseStart } = await resolveInvoicePrefix(clientId, categoryId);
   const prefix = isTest ? `TEST-${basePrefix}` : basePrefix;
   const startNumber = isTest ? 1 : baseStart;
   const all = await Invoice.findAll({
@@ -87,7 +106,7 @@ async function generateQuotationNumber(clientId, isTest = false) {
 async function createWithRetry(model, generateNumber, numberField, clientId, data, isTest) {
   const maxAttempts = 5;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const number = await generateNumber(clientId, isTest);
+    const number = await generateNumber(clientId, isTest, data.categoryId);
     try {
       return await model.create({ ...data, clientId, isTest, [numberField]: number });
     } catch (err) {

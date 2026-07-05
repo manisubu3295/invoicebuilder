@@ -307,6 +307,7 @@ onMounted(async () => {
               <span class="text-gray-500">Due Date</span>
               <span :class="invoice.status === 'overdue' ? 'text-red-600 font-bold' : ''">{{ fmtDate(invoice.dueDate) }}</span>
             </div>
+            <div v-if="invoice.category" class="flex justify-between gap-6"><span class="text-gray-500">Category</span><span class="font-semibold">{{ invoice.category.name }}</span></div>
           </div>
         </div>
 

@@ -18,11 +18,19 @@ const error = ref('');
 
 const form = ref({
   clientId: '',
+  categoryId: '',
   deliveryDate: new Date().toISOString().slice(0, 10),
   deliveredById: '',
   notes: '',
   items: [blankItem()],
 });
+
+// ── Category (per-client, mandatory) ────────────────────────────────
+const clientCategories = computed(() => clients.value.find(c => c.id === form.value.clientId)?.categories || []);
+function onClientChange() {
+  const cats = clientCategories.value;
+  form.value.categoryId = cats.length === 1 ? cats[0].id : '';
+}
 
 // ── Delivered By combobox ──────────────────────────────────────────
 const delivererSearch = ref('');
@@ -143,6 +151,7 @@ onMounted(async () => {
     try {
       const { data: log } = await deliveriesApi.get(route.params.id);
       form.value.clientId = log.clientId;
+      form.value.categoryId = log.categoryId || '';
       form.value.deliveryDate = log.deliveryDate;
       form.value.deliveredById = log.deliveredById;
       form.value.notes = log.notes || '';
@@ -169,6 +178,7 @@ onMounted(async () => {
 async function save() {
   error.value = '';
   if (!form.value.clientId) { error.value = 'Please select a client.'; return; }
+  if (!form.value.categoryId) { error.value = 'Please select a category.'; return; }
   if (!form.value.deliveryDate) { error.value = 'Please select a delivery date.'; return; }
   if (!form.value.deliveredById) { error.value = 'Please select who delivered.'; return; }
   const validItems = form.value.items.filter(i => i.itemName.trim());
@@ -177,6 +187,7 @@ async function save() {
   try {
     const payload = {
       clientId: form.value.clientId,
+      categoryId: form.value.categoryId,
       deliveryDate: form.value.deliveryDate,
       deliveredById: form.value.deliveredById,
       notes: form.value.notes,
@@ -215,10 +226,26 @@ async function save() {
           <!-- Client -->
           <div class="input-group lg:col-span-2">
             <label class="input-label">Client *</label>
-            <select v-model="form.clientId" class="input-field">
+            <select v-model="form.clientId" @change="onClientChange" class="input-field">
               <option value="">Select client…</option>
               <option v-for="c in clients" :key="c.id" :value="c.id">{{ c.companyName }}</option>
             </select>
+          </div>
+
+          <!-- Category -->
+          <div class="input-group" v-if="form.clientId">
+            <label class="input-label">Category *</label>
+            <div v-if="clientCategories.length === 1" class="input-field bg-gray-50 dark:bg-slate-700 text-gray-600 dark:text-slate-300 select-none">
+              {{ clientCategories[0].name }}
+            </div>
+            <select v-else-if="clientCategories.length > 1" v-model="form.categoryId" class="input-field">
+              <option value="">Select category…</option>
+              <option v-for="c in clientCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+            <div v-else class="input-field bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-xs flex items-center">
+              No categories assigned to this client —
+              <RouterLink to="/clients" class="underline font-medium ml-1">add one</RouterLink>
+            </div>
           </div>
 
           <!-- Date -->

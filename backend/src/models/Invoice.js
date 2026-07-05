@@ -7,6 +7,7 @@ module.exports = (sequelize, DataTypes) => {
     quotationId: { type: DataTypes.UUID },
     jobId: { type: DataTypes.UUID },
     clientId: { type: DataTypes.UUID, allowNull: false },
+    categoryId: { type: DataTypes.UUID, allowNull: true },
     date: { type: DataTypes.DATEONLY, allowNull: false },
     dueDate: { type: DataTypes.DATEONLY },
     status: { type: DataTypes.STRING, defaultValue: 'draft' },

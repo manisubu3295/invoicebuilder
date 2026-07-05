@@ -13,7 +13,7 @@ const currency = computed(() => settingsStore.settings?.currency || 'SGD');
 const sym = computed(() => settingsStore.settings?.currencySymbol || 'S$');
 
 const form = ref({
-  clientId: '', date: new Date().toISOString().split('T')[0], dueDate: '', notes: '', quotationId: null,
+  clientId: '', categoryId: '', date: new Date().toISOString().split('T')[0], dueDate: '', notes: '', quotationId: null,
   items: [{ sno: 1, itemType: 'service', jobDescription: '', fromDate: '', toDate: '', rate: '', rateType: 'per_week', deliveryDate: '', deliveryDates: [], quantity: 1, unitPrice: '', totalAmount: 0, runSheetNo: '' }],
 });
 const clients = ref([]);
@@ -25,6 +25,11 @@ const error = ref('');
 const nextNumber = ref('');
 const total = computed(() => form.value.items.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0));
 const showRunSheet = computed(() => !!clients.value.find(c => c.id === form.value.clientId)?.requiresRunSheet);
+const clientCategories = computed(() => clients.value.find(c => c.id === form.value.clientId)?.categories || []);
+function applyDefaultCategory() {
+  const cats = clientCategories.value;
+  form.value.categoryId = cats.length === 1 ? cats[0].id : '';
+}
 
 async function loadQuotation(quotationId) {
   if (!quotationId) return;
@@ -51,10 +56,13 @@ function clearQuotation() {
 
 async function refreshNextNumber() {
   if (isEdit.value) return;
-  try { nextNumber.value = (await invoicesApi.getNextNumber(form.value.clientId || undefined)).data.nextNumber; }
+  try { nextNumber.value = (await invoicesApi.getNextNumber(form.value.clientId || undefined, form.value.categoryId || undefined)).data.nextNumber; }
   catch { nextNumber.value = ''; }
 }
-watch(() => form.value.clientId, refreshNextNumber);
+watch(() => form.value.clientId, () => {
+  if (!isEdit.value) applyDefaultCategory();
+});
+watch(() => form.value.categoryId, refreshNextNumber);
 
 onMounted(async () => {
   await settingsStore.fetchSettings();
@@ -65,7 +73,7 @@ onMounted(async () => {
   if (isEdit.value) {
     const { data } = await invoicesApi.get(route.params.id);
     form.value = {
-      clientId: data.clientId, date: data.date, dueDate: data.dueDate || '', notes: data.notes || '', quotationId: data.quotationId || null,
+      clientId: data.clientId, categoryId: data.categoryId || '', date: data.date, dueDate: data.dueDate || '', notes: data.notes || '', quotationId: data.quotationId || null,
       items: (data.items || []).map(i => {
         let deliveryDates = [];
         try { deliveryDates = i.deliveryDates ? JSON.parse(i.deliveryDates) : []; } catch {}
@@ -84,6 +92,10 @@ onMounted(async () => {
 
 async function submit() {
   error.value = '';
+  if (!isEdit.value && !form.value.categoryId) {
+    error.value = 'Please select a category.';
+    return;
+  }
   for (const item of form.value.items) {
     if (item.itemType === 'delivery') {
       if (!item.deliveryDates?.length) {
@@ -140,6 +152,26 @@ async function submit() {
             <option v-for="c in clients" :key="c.id" :value="c.id">{{ c.companyName }}{{ c.clientCode ? ` (${c.clientCode})` : '' }}</option>
           </select>
         </div>
+        <div class="input-group" v-if="!isEdit && form.clientId">
+          <label class="input-label">Category *</label>
+          <div v-if="clientCategories.length === 1" class="input-field bg-gray-50 text-gray-600 select-none">
+            {{ clientCategories[0].name }}
+          </div>
+          <select v-else-if="clientCategories.length > 1" v-model="form.categoryId" class="input-field">
+            <option value="">Select category…</option>
+            <option v-for="c in clientCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+          <div v-else class="input-field bg-amber-50 text-amber-700 text-xs flex items-center">
+            No categories assigned to this client —
+            <RouterLink to="/clients" class="underline font-medium ml-1">add one</RouterLink>
+          </div>
+        </div>
+        <div v-if="isEdit && form.categoryId" class="input-group">
+          <label class="input-label">Category</label>
+          <div class="input-field bg-gray-50 text-gray-600 select-none">
+            {{ clients.find(c => c.id === form.clientId)?.categories?.find(c => c.id === form.categoryId)?.name || '—' }}
+          </div>
+        </div>
         <div class="input-group"><label class="input-label">Invoice Date *</label><input v-model="form.date" type="date" class="input-field"/></div>
         <div class="input-group"><label class="input-label">Due Date</label><input v-model="form.dueDate" type="date" class="input-field"/></div>
         <div class="input-group sm:col-span-2"><label class="input-label">Notes</label><textarea v-model="form.notes" class="input-field" rows="2" placeholder="Optional notes for the client"></textarea></div>
@@ -157,7 +189,7 @@ async function submit() {
     </div>
 
     <div class="flex gap-3">
-      <button @click="submit" :disabled="loading || !form.clientId" class="btn-primary">{{ loading ? 'Saving…' : (isEdit ? 'Update Invoice' : 'Create Invoice') }}</button>
+      <button @click="submit" :disabled="loading || !form.clientId || (!isEdit && !form.categoryId)" class="btn-primary">{{ loading ? 'Saving…' : (isEdit ? 'Update Invoice' : 'Create Invoice') }}</button>
       <RouterLink to="/invoices" class="btn-secondary">Cancel</RouterLink>
     </div>
   </div>

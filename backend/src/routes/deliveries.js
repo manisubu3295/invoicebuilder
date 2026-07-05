@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { Op } = require('sequelize');
-const { DeliveryLog, DeliveryItem, Client, User, InvoiceItem } = require('../models');
+const { DeliveryLog, DeliveryItem, Client, User, InvoiceItem, Category } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 
@@ -8,6 +8,7 @@ router.use(auth);
 
 const fullInclude = [
   { model: Client, as: 'client', attributes: ['id', 'companyName', 'clientCode'] },
+  { model: Category, as: 'category', attributes: ['id', 'name', 'invoicePrefix'] },
   { model: User, as: 'deliveredBy', attributes: ['id', 'name'] },
   { model: DeliveryItem, as: 'items' },
 ];
@@ -54,22 +55,25 @@ router.get('/deliverers', async (req, res) => {
 // MUST come before /:id to avoid "preview" being treated as an ID
 router.get('/preview', rbac('admin', 'staff'), async (req, res) => {
   try {
-    const { clientId, startDate, endDate } = req.query;
+    const { clientId, startDate, endDate, categoryId } = req.query;
     if (!clientId || !startDate || !endDate) {
       return res.status(400).json({ message: 'clientId, startDate, and endDate are required' });
     }
 
+    const where = {
+      clientId,
+      deliveryDate: { [Op.between]: [startDate, endDate] },
+      status: 'pending',
+    };
+    if (categoryId) where.categoryId = categoryId;
+
     const logs = await DeliveryLog.findAll({
-      where: {
-        clientId,
-        deliveryDate: { [Op.between]: [startDate, endDate] },
-        status: 'pending',
-      },
+      where,
       include: fullInclude,
       order: [['deliveryDate', 'ASC'], ['createdAt', 'ASC']],
     });
 
-    const client = await Client.findByPk(clientId);
+    const client = await Client.findByPk(clientId, { include: [{ model: Category, as: 'categories', attributes: ['id', 'name', 'invoicePrefix'], through: { attributes: [] } }] });
     const rows = [];
     logs.forEach(log => {
       log.items.forEach(item => {
@@ -79,6 +83,7 @@ router.get('/preview', rbac('admin', 'staff'), async (req, res) => {
           deliveryDate: log.deliveryDate,
           deliveredBy: log.deliveredBy?.name || '',
           deliveredById: log.deliveredById,
+          categoryId: log.categoryId,
           itemName: item.itemName,
           quantity: parseFloat(item.quantity),
           unitPrice: parseFloat(item.unitPrice),
@@ -112,10 +117,11 @@ router.get('/:id', async (req, res) => {
 // POST /api/deliveries
 router.post('/', async (req, res) => {
   try {
-    const { clientId, deliveryDate, items, notes } = req.body;
+    const { clientId, categoryId, deliveryDate, items, notes } = req.body;
     if (!clientId || !deliveryDate || !items?.length) {
       return res.status(400).json({ message: 'clientId, deliveryDate, and items are required' });
     }
+    if (!categoryId) return res.status(400).json({ message: 'Category is required' });
 
     const canChooseDeliverer = req.user.role === 'admin' || req.user.role === 'staff';
     const deliveredById = canChooseDeliverer && req.body.deliveredById
@@ -124,6 +130,7 @@ router.post('/', async (req, res) => {
 
     const log = await DeliveryLog.create({
       clientId,
+      categoryId,
       deliveredById,
       deliveryDate,
       notes,
@@ -160,8 +167,10 @@ router.put('/:id', async (req, res) => {
       return res.status(403).json({ message: 'Not authorised' });
     }
 
-    const { deliveryDate, notes, items, deliveredById } = req.body;
+    const { deliveryDate, notes, items, deliveredById, categoryId } = req.body;
+    if (categoryId !== undefined && !categoryId) return res.status(400).json({ message: 'Category is required' });
     const updateFields = { deliveryDate, notes };
+    if (categoryId) updateFields.categoryId = categoryId;
     if (req.user.role === 'admin' && deliveredById) updateFields.deliveredById = deliveredById;
     await log.update(updateFields);
 

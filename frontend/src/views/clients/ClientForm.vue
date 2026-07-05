@@ -1,18 +1,46 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { clientsApi } from '../../api/index.js';
+import { clientsApi, categoriesApi } from '../../api/index.js';
 
 const route = useRoute();
 const router = useRouter();
 const isEdit = computed(() => !!route.params.id);
-const form = ref({ companyName: '', clientCode: '', contactPerson: '', email: '', phone: '', address: '', invoicePrefix: '', invoiceStartNumber: '', quotationPrefix: '', quotationStartNumber: '', requiresRunSheet: false });
+const form = ref({ companyName: '', clientCode: '', contactPerson: '', email: '', phone: '', address: '', invoicePrefix: '', invoiceStartNumber: '', quotationPrefix: '', quotationStartNumber: '', requiresRunSheet: false, categoryIds: [] });
 const loading = ref(false);
 const error = ref('');
 
+const categories = ref([]);
+const newCategoryName = ref('');
+const newCategoryPrefix = ref('');
+const addingCategory = ref(false);
+
 onMounted(async () => {
-  if (isEdit.value) form.value = { ...(await clientsApi.get(route.params.id)).data };
+  categories.value = (await categoriesApi.list()).data;
+  if (isEdit.value) {
+    const { data } = await clientsApi.get(route.params.id);
+    form.value = { ...data, categoryIds: (data.categories || []).map(c => c.id) };
+  }
 });
+
+function toggleCategory(id) {
+  const idx = form.value.categoryIds.indexOf(id);
+  if (idx === -1) form.value.categoryIds.push(id);
+  else form.value.categoryIds.splice(idx, 1);
+}
+
+async function addCategory() {
+  if (!newCategoryName.value.trim() || !newCategoryPrefix.value.trim()) return;
+  addingCategory.value = true;
+  try {
+    const { data } = await categoriesApi.create({ name: newCategoryName.value.trim(), invoicePrefix: newCategoryPrefix.value.trim() });
+    categories.value.push(data);
+    form.value.categoryIds.push(data.id);
+    newCategoryName.value = '';
+    newCategoryPrefix.value = '';
+  } catch (e) { error.value = e.response?.data?.message || 'Failed to add category.'; }
+  finally { addingCategory.value = false; }
+}
 
 function autoCode() {
   if (!isEdit.value && form.value.companyName && !form.value.clientCode)
@@ -77,6 +105,36 @@ async function submit() {
           <div v-if="form.invoicePrefix || form.quotationPrefix" class="mt-3 p-3 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-700 space-y-1">
             <div v-if="form.invoicePrefix">Invoice numbers will use: <strong>{{ form.invoicePrefix.toUpperCase() }}-{{ String(form.invoiceStartNumber || 1).padStart(4, '0') }}</strong>, <strong>{{ form.invoicePrefix.toUpperCase() }}-{{ String((form.invoiceStartNumber || 1) + 1).padStart(4, '0') }}</strong>…</div>
             <div v-if="form.quotationPrefix">Quotation numbers will use: <strong>{{ form.quotationPrefix.toUpperCase() }}-{{ String(form.quotationStartNumber || 1).padStart(4, '0') }}</strong>, <strong>{{ form.quotationPrefix.toUpperCase() }}-{{ String((form.quotationStartNumber || 1) + 1).padStart(4, '0') }}</strong>…</div>
+          </div>
+        </div>
+
+        <!-- Categories -->
+        <div class="pt-2 border-t border-gray-100">
+          <p class="text-sm font-medium text-gray-700 mb-1">Categories</p>
+          <p class="text-xs text-gray-400 mb-3">Types of work this client is invoiced for (e.g. Transport, Storage). If only one is selected, drivers and staff won't be asked to pick it — it's applied automatically. With more than one, they'll choose which applies each time.</p>
+
+          <div v-if="categories.length" class="flex flex-wrap gap-2 mb-3">
+            <label v-for="c in categories" :key="c.id"
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm cursor-pointer transition-colors"
+              :class="form.categoryIds.includes(c.id) ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'">
+              <input type="checkbox" class="w-3.5 h-3.5 accent-blue-600" :checked="form.categoryIds.includes(c.id)" @change="toggleCategory(c.id)"/>
+              {{ c.name }} <span class="text-xs opacity-60">({{ c.invoicePrefix }})</span>
+            </label>
+          </div>
+          <p v-else class="text-xs text-gray-400 italic mb-3">No categories yet — add one below.</p>
+
+          <div class="flex items-end gap-2">
+            <div class="input-group flex-1">
+              <label class="input-label">New Category</label>
+              <input v-model="newCategoryName" class="input-field" placeholder="e.g. Transport"/>
+            </div>
+            <div class="input-group w-28">
+              <label class="input-label">Prefix</label>
+              <input v-model="newCategoryPrefix" class="input-field uppercase" maxlength="20" placeholder="TRN"/>
+            </div>
+            <button type="button" @click="addCategory" :disabled="addingCategory || !newCategoryName.trim() || !newCategoryPrefix.trim()" class="btn-secondary shrink-0">
+              {{ addingCategory ? 'Adding…' : '+ Add' }}
+            </button>
           </div>
         </div>
 

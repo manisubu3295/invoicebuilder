@@ -1,14 +1,16 @@
 const router = require('express').Router();
-const { Client, Quotation, Invoice, Job, DeliveryLog } = require('../models');
+const { Client, Quotation, Invoice, Job, DeliveryLog, Category, ClientCategory } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 const { isTestModeEnabled } = require('../services/testMode');
 
 router.use(auth);
 
+const categoriesInclude = { model: Category, as: 'categories', attributes: ['id', 'name', 'invoicePrefix'], through: { attributes: [] } };
+
 router.get('/', async (req, res) => {
   try {
-    const clients = await Client.findAll({ where: { isTest: isTestModeEnabled() }, order: [['companyName', 'ASC']] });
+    const clients = await Client.findAll({ where: { isTest: isTestModeEnabled() }, include: [categoriesInclude], order: [['companyName', 'ASC']] });
     res.json(clients);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -17,7 +19,7 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const client = await Client.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
+    const client = await Client.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() }, include: [categoriesInclude] });
     if (!client) return res.status(404).json({ message: 'Client not found' });
     res.json(client);
   } catch (err) {
@@ -27,7 +29,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', rbac('admin'), async (req, res) => {
   try {
-    const { companyName, clientCode, contactPerson, email, phone, address, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber, requiresRunSheet } = req.body;
+    const { companyName, clientCode, contactPerson, email, phone, address, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber, requiresRunSheet, categoryIds } = req.body;
     if (!companyName || !clientCode) return res.status(400).json({ message: 'Company name and client code required' });
 
     const isTest = isTestModeEnabled();
@@ -43,7 +45,10 @@ router.post('/', rbac('admin'), async (req, res) => {
       quotationStartNumber: quotationStartNumber || null,
       requiresRunSheet: !!requiresRunSheet,
     });
-    res.status(201).json(client);
+    await client.setCategories(Array.isArray(categoryIds) ? categoryIds : []);
+
+    const full = await Client.findByPk(client.id, { include: [categoriesInclude] });
+    res.status(201).json(full);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -54,7 +59,7 @@ router.put('/:id', rbac('admin'), async (req, res) => {
     const client = await Client.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!client) return res.status(404).json({ message: 'Client not found' });
 
-    const { companyName, clientCode, contactPerson, email, phone, address, isActive, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber, requiresRunSheet } = req.body;
+    const { companyName, clientCode, contactPerson, email, phone, address, isActive, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber, requiresRunSheet, categoryIds } = req.body;
     await client.update({
       companyName, clientCode: clientCode?.toUpperCase(), contactPerson, email, phone, address, isActive,
       invoicePrefix: invoicePrefix?.trim() || null,
@@ -63,7 +68,10 @@ router.put('/:id', rbac('admin'), async (req, res) => {
       quotationStartNumber: quotationStartNumber || null,
       requiresRunSheet: requiresRunSheet !== undefined ? !!requiresRunSheet : client.requiresRunSheet,
     });
-    res.json(client);
+    if (categoryIds !== undefined) await client.setCategories(Array.isArray(categoryIds) ? categoryIds : []);
+
+    const full = await Client.findByPk(client.id, { include: [categoriesInclude] });
+    res.json(full);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -102,6 +110,7 @@ router.delete('/:id/permanent', rbac('admin'), async (req, res) => {
       return res.status(409).json({ message: `Cannot permanently delete: this client has ${blockers.join(', ')}. Remove those first.` });
     }
 
+    await ClientCategory.destroy({ where: { clientId: client.id } });
     await client.destroy();
     res.json({ message: 'Client permanently deleted' });
   } catch (err) {

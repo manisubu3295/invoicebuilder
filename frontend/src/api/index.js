@@ -17,7 +17,7 @@ export const clientsApi = {
 export const invoicesApi = {
   list: (params) => api.get('/invoices', { params }),
   get: (id) => api.get(`/invoices/${id}`),
-  getNextNumber: (clientId) => api.get('/invoices/next-number', { params: { clientId } }),
+  getNextNumber: (clientId, categoryId) => api.get('/invoices/next-number', { params: { clientId, categoryId } }),
   create: (data) => api.post('/invoices', data),
   update: (id, data) => api.put(`/invoices/${id}`, data),
   remove: (id) => api.delete(`/invoices/${id}`),
@@ -73,19 +73,29 @@ export const vehiclesApi = {
 export const reportsApi = {
   dashboard: () => api.get('/reports/dashboard'),
   revenue: (year) => api.get('/reports/revenue', { params: { year } }),
+  revenuePdf: (year) => api.get('/reports/revenue/pdf', { params: { year }, responseType: 'blob' }),
   aging: () => api.get('/reports/aging'),
+  agingPdf: () => api.get('/reports/aging/pdf', { responseType: 'blob' }),
   clientSummary: () => api.get('/reports/client-summary'),
+  clientSummaryPdf: () => api.get('/reports/client-summary/pdf', { responseType: 'blob' }),
   driverSummary: () => api.get('/reports/driver-summary'),
+  driverSummaryPdf: () => api.get('/reports/driver-summary/pdf', { responseType: 'blob' }),
   vehicleSummary: () => api.get('/reports/vehicle-summary'),
+  vehicleSummaryPdf: () => api.get('/reports/vehicle-summary/pdf', { responseType: 'blob' }),
   expenseSummary: () => api.get('/reports/expense-summary'),
+  expenseSummaryPdf: () => api.get('/reports/expense-summary/pdf', { responseType: 'blob' }),
   attendance: (params) => api.get('/reports/attendance', { params }),
+  attendancePdf: (params) => api.get('/reports/attendance/pdf', { params, responseType: 'blob' }),
   pnl: (year) => api.get('/reports/pnl', { params: { year } }),
+  pnlPdf: (year) => api.get('/reports/pnl/pdf', { params: { year }, responseType: 'blob' }),
   soa: (clientId) => api.get(`/reports/soa/${clientId}`),
   soaPdf: (clientId) => api.get(`/reports/soa/${clientId}/pdf`, { responseType: 'blob' }),
   payroll: (params) => api.get('/reports/payroll', { params }),
   payrollPdf: (params) => api.get('/reports/payroll/pdf', { params, responseType: 'blob' }),
   jobSummary: (params) => api.get('/reports/job-summary', { params }),
+  jobSummaryPdf: (params) => api.get('/reports/job-summary/pdf', { params, responseType: 'blob' }),
   arAction: () => api.get('/reports/ar-action'),
+  arActionPdf: () => api.get('/reports/ar-action/pdf', { responseType: 'blob' }),
   fleetCompliancePdf: () => api.get('/reports/fleet-compliance/pdf', { responseType: 'blob' }),
 };
 
@@ -126,6 +136,14 @@ export const itemCatalogApi = {
   update: (id, data) => api.put(`/item-catalog/${id}`, data),
   remove: (id) => api.delete(`/item-catalog/${id}`),
   removePermanent: (id) => api.delete(`/item-catalog/${id}/permanent`),
+};
+
+export const categoriesApi = {
+  list: (params) => api.get('/categories', { params }),
+  create: (data) => api.post('/categories', data),
+  update: (id, data) => api.put(`/categories/${id}`, data),
+  remove: (id) => api.delete(`/categories/${id}`),
+  removePermanent: (id) => api.delete(`/categories/${id}/permanent`),
 };
 
 export const deliveriesApi = {

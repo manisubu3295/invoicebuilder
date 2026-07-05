@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { reportsApi, clientsApi, driversApi, vehiclesApi } from '../../api/index.js';
 
 const tab = ref('revenue');
@@ -91,21 +91,127 @@ const MONTHS_SHORT = ['J','F','M','A','M','J','J','A','S','O','N','D'];
 const agingBuckets = ['0-30', '31-60', '60+'];
 const bucketColor = b => b === '60+' ? 'text-red-600 dark:text-red-400' : b === '31-60' ? 'text-amber-600 dark:text-amber-400' : 'text-gray-800 dark:text-slate-200';
 
-const TABS = [
-  { key: 'revenue', label: 'Revenue', icon: 'bar_chart' },
-  { key: 'aging', label: 'Invoice Aging', icon: 'schedule' },
-  { key: 'clients', label: 'Client Summary', icon: 'business' },
-  { key: 'drivers', label: 'Driver Report', icon: 'badge' },
-  { key: 'vehicles', label: 'Vehicle Report', icon: 'directions_car' },
-  { key: 'expenses', label: 'Expense Report', icon: 'payments' },
-  { key: 'attendance', label: 'Attendance', icon: 'event_available' },
-  { key: 'pnl', label: 'P&L', icon: 'account_balance' },
-  { key: 'soa', label: 'Statement of Account', icon: 'account_balance_wallet' },
-  { key: 'payroll', label: 'Payroll', icon: 'payments' },
-  { key: 'job-summary', label: 'Job Summary', icon: 'summarize' },
-  { key: 'ar', label: 'A/R Actions', icon: 'call_made' },
-  { key: 'fleet', label: 'Fleet Compliance', icon: 'verified' },
+const REPORT_GROUPS = [
+  {
+    key: 'financial', label: 'Financial', icon: 'account_balance',
+    reports: [
+      { key: 'revenue', label: 'Revenue', icon: 'bar_chart' },
+      { key: 'aging', label: 'Invoice Aging', icon: 'schedule' },
+      { key: 'clients', label: 'Client Summary', icon: 'business' },
+      { key: 'pnl', label: 'P&L', icon: 'account_balance' },
+      { key: 'soa', label: 'Statement of Account', icon: 'account_balance_wallet' },
+      { key: 'ar', label: 'A/R Actions', icon: 'call_made' },
+    ],
+  },
+  {
+    key: 'operations', label: 'Operations', icon: 'local_shipping',
+    reports: [
+      { key: 'drivers', label: 'Driver Report', icon: 'badge' },
+      { key: 'vehicles', label: 'Vehicle Report', icon: 'directions_car' },
+      { key: 'job-summary', label: 'Job Summary', icon: 'summarize' },
+      { key: 'expenses', label: 'Expense Report', icon: 'payments' },
+    ],
+  },
+  {
+    key: 'compliance', label: 'Compliance & Payroll', icon: 'verified',
+    reports: [
+      { key: 'attendance', label: 'Attendance', icon: 'event_available' },
+      { key: 'payroll', label: 'Payroll', icon: 'payments' },
+      { key: 'fleet', label: 'Fleet Compliance', icon: 'verified' },
+    ],
+  },
 ];
+
+const REPORT_META = {
+  revenue: 'Monthly paid-invoice revenue for the selected year.',
+  aging: 'Outstanding invoices grouped by how overdue they are.',
+  clients: 'Billing totals per client — billed, paid, and outstanding.',
+  drivers: 'Jobs, completed deliveries, and linked revenue per driver.',
+  vehicles: 'Utilisation and job counts per vehicle.',
+  expenses: 'Driver expense claims and vehicle fuel usage.',
+  attendance: 'Days worked per driver by month.',
+  pnl: 'Revenue, expenses, and profit by month and by job.',
+  soa: 'Full invoice and payment history for one client.',
+  payroll: 'Gross pay, CPF, and net pay per driver for a period.',
+  'job-summary': 'Searchable list of jobs with invoicing status.',
+  ar: 'Sent and overdue invoices needing follow-up.',
+  fleet: 'Vehicle document expiry status across the fleet.',
+};
+
+const activeGroup = ref('financial');
+const activeGroupReports = computed(() => REPORT_GROUPS.find(g => g.key === activeGroup.value)?.reports || []);
+const activeReportLabel = computed(() => activeGroupReports.value.find(r => r.key === tab.value)?.label || '');
+
+function selectGroup(groupKey) {
+  activeGroup.value = groupKey;
+  tab.value = REPORT_GROUPS.find(g => g.key === groupKey).reports[0].key;
+}
+
+const reportActions = computed(() => {
+  switch (tab.value) {
+    case 'revenue':
+      return {
+        pdf: () => downloadPdf(reportsApi.revenuePdf(revenueYear.value), `revenue-${revenueYear.value}.pdf`),
+        csv: () => exportCSV(revenueData.value?.months?.map((m, i) => ({ month: MONTHS[i], total: m.total, count: m.count })), `revenue-${revenueYear.value}.csv`),
+      };
+    case 'aging':
+      return { pdf: () => downloadPdf(reportsApi.agingPdf(), 'invoice-aging.pdf') };
+    case 'clients':
+      return {
+        pdf: () => downloadPdf(reportsApi.clientSummaryPdf(), 'client-summary.pdf'),
+        csv: () => exportCSV(clientSummary.value, 'client-summary.csv'),
+      };
+    case 'drivers':
+      return {
+        pdf: () => downloadPdf(reportsApi.driverSummaryPdf(), 'driver-report.pdf'),
+        csv: () => exportCSV(driverSummary.value, 'driver-report.csv'),
+      };
+    case 'vehicles':
+      return {
+        pdf: () => downloadPdf(reportsApi.vehicleSummaryPdf(), 'vehicle-report.pdf'),
+        csv: () => exportCSV(vehicleSummary.value, 'vehicle-report.csv'),
+      };
+    case 'expenses':
+      return { pdf: () => downloadPdf(reportsApi.expenseSummaryPdf(), 'expense-report.pdf') };
+    case 'attendance':
+      return {
+        pdf: () => downloadPdf(reportsApi.attendancePdf({ year: attendanceYear.value, month: attendanceMonth.value || undefined }), `attendance-${attendanceYear.value}.pdf`),
+        csv: () => exportCSV(attendanceData.value, 'attendance.csv'),
+      };
+    case 'pnl':
+      return pnlData.value ? { pdf: () => downloadPdf(reportsApi.pnlPdf(pnlYear.value), `pnl-${pnlYear.value}.pdf`) } : {};
+    case 'soa':
+      return soaData.value ? { pdf: () => downloadPdf(reportsApi.soaPdf(soaClientId.value), `SOA-${soaData.value.client?.companyName || soaClientId.value}.pdf`) } : {};
+    case 'payroll':
+      return payrollData.value ? {
+        pdf: () => downloadPdf(reportsApi.payrollPdf({ year: payrollYear.value, month: payrollMonth.value || undefined }), `payroll-${payrollYear.value}-${payrollMonth.value || 'full'}.pdf`),
+        csv: payrollData.value?.rows?.length ? () => exportCSV(payrollData.value.rows, `payroll-${payrollYear.value}.csv`) : null,
+      } : {};
+    case 'job-summary':
+      return {
+        pdf: () => downloadPdf(reportsApi.jobSummaryPdf({
+          from: jobSummaryFrom.value || undefined, to: jobSummaryTo.value || undefined, status: jobSummaryStatus.value || undefined,
+          clientId: jobSummaryClientId.value || undefined, driverId: jobSummaryDriverId.value || undefined,
+        }), 'job-summary.pdf'),
+        csv: jobSummaryData.value.length ? () => exportCSV(jobSummaryData.value, 'job-summary.csv') : null,
+      };
+    case 'ar':
+      return {
+        pdf: () => downloadPdf(reportsApi.arActionPdf(), 'ar-actions.pdf'),
+        csv: arData.value.length ? () => exportCSV(arData.value, 'ar-actions.csv') : null,
+      };
+    case 'fleet':
+      return {
+        pdf: () => downloadPdf(reportsApi.fleetCompliancePdf(), 'fleet-compliance.pdf'),
+        csv: fleetData.value.length ? () => exportCSV(fleetData.value.map(v => ({
+          plate: v.plateNumber, type: v.type, size: v.size, coeExpiry: v.coeExpiry || '', roadTaxExpiry: v.roadTaxExpiry || '',
+          insuranceExpiry: v.insuranceExpiry || '', inspectionDue: v.inspectionDue || '',
+        })), 'fleet-compliance.csv') : null,
+      };
+    default:
+      return {};
+  }
+});
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -200,19 +306,50 @@ watch(tab, (newTab) => {
       <h1 class="page-title">Reports</h1>
     </div>
 
-    <!-- Tab bar -->
-    <div class="flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-slate-700 pb-px">
+    <!-- Group selector -->
+    <div class="flex flex-wrap gap-2">
       <button
-        v-for="t in TABS" :key="t.key"
-        @click="tab = t.key"
-        class="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors"
-        :class="tab === t.key
-          ? 'border-blue-600 text-blue-600'
-          : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'"
+        v-for="g in REPORT_GROUPS" :key="g.key"
+        @click="selectGroup(g.key)"
+        class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+        :class="activeGroup === g.key
+          ? 'bg-blue-600 text-white'
+          : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-700/60 dark:text-slate-300 dark:hover:bg-slate-700'"
       >
-        <span class="material-icons" style="font-size:15px">{{ t.icon }}</span>
-        {{ t.label }}
+        <span class="material-icons" style="font-size:16px">{{ g.icon }}</span>
+        {{ g.label }}
       </button>
+    </div>
+
+    <!-- Report pills — wraps to multiple rows, no horizontal scroll -->
+    <div class="flex flex-wrap gap-1.5 pb-3 border-b border-gray-200 dark:border-slate-700">
+      <button
+        v-for="r in activeGroupReports" :key="r.key"
+        @click="tab = r.key"
+        class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors"
+        :class="tab === r.key
+          ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800'
+          : 'border border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/40'"
+      >
+        <span class="material-icons" style="font-size:14px">{{ r.icon }}</span>
+        {{ r.label }}
+      </button>
+    </div>
+
+    <!-- Report toolbar — title, description, export actions -->
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <h2 class="text-base font-semibold text-gray-900 dark:text-slate-100">{{ activeReportLabel }}</h2>
+        <p class="text-xs text-gray-400 dark:text-slate-500">{{ REPORT_META[tab] }}</p>
+      </div>
+      <div class="flex gap-2">
+        <button v-if="reportActions.pdf" @click="reportActions.pdf()" class="btn-secondary h-8 px-3 text-xs">
+          <span class="material-icons" style="font-size:14px">picture_as_pdf</span> Export PDF
+        </button>
+        <button v-if="reportActions.csv" @click="reportActions.csv()" class="btn-secondary h-8 px-3 text-xs">
+          <span class="material-icons" style="font-size:14px">table_chart</span> Export CSV
+        </button>
+      </div>
     </div>
 
     <!-- ── Revenue ── -->
@@ -221,7 +358,6 @@ watch(tab, (newTab) => {
         <span class="card-title">Monthly Revenue</span>
         <div class="flex items-center gap-3">
           <input v-model.number="revenueYear" type="number" @change="loadRevenue" class="input-field w-24 text-center"/>
-          <button @click="exportCSV(revenueData?.months?.map((m,i)=>({month:MONTHS[i],total:m.total,count:m.count})), `revenue-${revenueYear}.csv`)" class="btn-secondary h-8 px-3 text-xs">Export CSV</button>
         </div>
       </div>
       <div class="p-5">
@@ -275,7 +411,6 @@ watch(tab, (newTab) => {
     <div v-if="tab === 'clients'" class="card p-0">
       <div class="card-header">
         <span class="card-title">Client Summary</span>
-        <button @click="exportCSV(clientSummary,'client-summary.csv')" class="btn-secondary h-8 px-3 text-xs">Export CSV</button>
       </div>
       <table class="mat-table">
         <thead>
@@ -305,7 +440,6 @@ watch(tab, (newTab) => {
       <div class="card p-0">
         <div class="card-header">
           <span class="card-title">Driver Performance</span>
-          <button @click="exportCSV(driverSummary, 'driver-report.csv')" class="btn-secondary h-8 px-3 text-xs">Export CSV</button>
         </div>
         <table class="mat-table">
           <thead>
@@ -339,7 +473,6 @@ watch(tab, (newTab) => {
       <div class="card p-0">
         <div class="card-header">
           <span class="card-title">Vehicle Utilisation</span>
-          <button @click="exportCSV(vehicleSummary, 'vehicle-report.csv')" class="btn-secondary h-8 px-3 text-xs">Export CSV</button>
         </div>
         <table class="mat-table">
           <thead>
@@ -379,7 +512,6 @@ watch(tab, (newTab) => {
       <div class="card p-0">
         <div class="card-header">
           <span class="card-title">Driver Expenses</span>
-          <button @click="exportCSV(expenseSummary?.driverSummary, 'expense-by-driver.csv')" class="btn-secondary h-8 px-3 text-xs">Export CSV</button>
         </div>
         <table class="mat-table">
           <thead>
@@ -454,7 +586,6 @@ watch(tab, (newTab) => {
             <option v-for="(m,i) in MONTH_NAMES" :key="i" :value="String(i+1).padStart(2,'0')">{{ m }}</option>
           </select>
         </div>
-        <button @click="exportCSV(attendanceData, 'attendance.csv')" class="btn-secondary h-9 px-3 text-sm">Export CSV</button>
       </div>
       <div class="card p-0">
         <div class="card-header"><span class="card-title">Days Worked by Driver</span></div>
@@ -565,11 +696,6 @@ watch(tab, (newTab) => {
           <button @click="loadSoa" :disabled="!soaClientId || soaLoading" class="btn-primary h-9 px-4">
             {{ soaLoading ? 'Loading…' : 'Load Statement' }}
           </button>
-          <button v-if="soaData"
-            @click="downloadPdf(reportsApi.soaPdf(soaClientId), `SOA-${soaData.client?.companyName || soaClientId}.pdf`)"
-            class="btn-secondary h-9 px-4">
-            <span class="material-icons" style="font-size:14px">picture_as_pdf</span> Download PDF
-          </button>
         </div>
       </div>
       <div v-if="soaData" class="space-y-4">
@@ -645,10 +771,6 @@ watch(tab, (newTab) => {
           </select>
         </div>
         <button @click="loadPayroll" :disabled="payrollLoading" class="btn-primary h-9 px-4">{{ payrollLoading ? 'Calculating…' : 'Calculate' }}</button>
-        <button v-if="payrollData" @click="downloadPdf(reportsApi.payrollPdf({ year: payrollYear, month: payrollMonth || undefined }), `payroll-${payrollYear}-${payrollMonth||'full'}.pdf`)" class="btn-secondary h-9 px-4">
-          <span class="material-icons" style="font-size:14px">picture_as_pdf</span> Download PDF
-        </button>
-        <button v-if="payrollData?.rows?.length" @click="exportCSV(payrollData.rows, `payroll-${payrollYear}.csv`)" class="btn-secondary h-9 px-4">Export CSV</button>
       </div>
       <div v-if="payrollData" class="card p-0">
         <div class="card-header"><span class="card-title">Payroll Summary — {{ payrollYear }}{{ payrollMonth ? ' / ' + MONTH_NAMES[parseInt(payrollMonth)-1] : '' }}</span></div>
@@ -721,7 +843,6 @@ watch(tab, (newTab) => {
             </select>
           </div>
           <button @click="loadJobSummary" class="btn-primary h-9 px-4">Search</button>
-          <button v-if="jobSummaryData.length" @click="exportCSV(jobSummaryData,'job-summary.csv')" class="btn-secondary h-9 px-4">Export CSV</button>
         </div>
       </div>
       <div class="card p-0">
@@ -771,7 +892,6 @@ watch(tab, (newTab) => {
     <div v-if="tab === 'ar'" class="space-y-4">
       <div class="flex justify-between items-center">
         <p class="text-sm text-gray-500 dark:text-slate-400">All sent/overdue invoices requiring follow-up, sorted by days overdue.</p>
-        <button v-if="arData.length" @click="exportCSV(arData,'ar-actions.csv')" class="btn-secondary h-8 px-3 text-xs">Export CSV</button>
       </div>
       <div class="card p-0">
         <div class="card-header"><span class="card-title">A/R Action List</span><span class="text-xs text-gray-400">{{ arData.length }} outstanding</span></div>
@@ -814,18 +934,10 @@ watch(tab, (newTab) => {
 
     <!-- ── Fleet Compliance ── -->
     <div v-if="tab === 'fleet'" class="space-y-4">
-      <div class="flex gap-3 items-center justify-between">
-        <div class="flex gap-3">
-          <span class="text-xs px-2.5 py-1 rounded-full bg-red-50 text-red-700 font-semibold border border-red-200">Red = Expired</span>
-          <span class="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-semibold border border-amber-200">Amber = &lt;30 days</span>
-          <span class="text-xs px-2.5 py-1 rounded-full bg-green-50 text-green-700 font-semibold border border-green-200">Green = OK</span>
-        </div>
-        <div class="flex gap-2">
-          <button @click="downloadPdf(reportsApi.fleetCompliancePdf(), 'fleet-compliance.pdf')" class="btn-secondary h-8 px-3 text-xs">
-            <span class="material-icons" style="font-size:13px">picture_as_pdf</span> Download PDF
-          </button>
-          <button v-if="fleetData.length" @click="exportCSV(fleetData.map(v=>({plate:v.plateNumber,type:v.type,size:v.size,coeExpiry:v.coeExpiry||'',roadTaxExpiry:v.roadTaxExpiry||'',insuranceExpiry:v.insuranceExpiry||'',inspectionDue:v.inspectionDue||''})),'fleet-compliance.csv')" class="btn-secondary h-8 px-3 text-xs">Export CSV</button>
-        </div>
+      <div class="flex gap-3 items-center">
+        <span class="text-xs px-2.5 py-1 rounded-full bg-red-50 text-red-700 font-semibold border border-red-200">Red = Expired</span>
+        <span class="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-semibold border border-amber-200">Amber = &lt;30 days</span>
+        <span class="text-xs px-2.5 py-1 rounded-full bg-green-50 text-green-700 font-semibold border border-green-200">Green = OK</span>
       </div>
       <div class="card p-0">
         <div class="card-header"><span class="card-title">Fleet Compliance</span><span class="text-xs text-gray-400">{{ fleetData.length }} vehicles</span></div>

@@ -754,4 +754,401 @@ async function generateFleetCompliancePDF(vehicles, company) {
   return generatePDFBuffer(html);
 }
 
-module.exports = { generateInvoicePDF, generateQuotationPDF, generateSOAPDF, generatePayrollPDF, generateFleetCompliancePDF };
+function reportHeader(title, subtitle, company) {
+  return `
+  ${buildCompanyHeader(company || {})}
+  <div style="border-top:2.5px solid #111827;border-bottom:1px solid #e5e7eb;padding:12px 0;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="font-size:18px;font-weight:bold;color:#111827;letter-spacing:2px;">${title}</div>
+    <div style="font-size:11px;color:#6b7280;">${subtitle}</div>
+  </div>`;
+}
+
+function reportFooter(text) {
+  return `<div style="font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px;margin-top:12px;">${text}</div>`;
+}
+
+async function generateRevenuePDF(months, year, company) {
+  const sym = (company && company.currencySymbol) || 'S$';
+  const today = formatDate(new Date().toISOString().slice(0, 10));
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  const totalRevenue = months.reduce((s, m) => s + parseFloat(m.total || 0), 0);
+  const totalCount = months.reduce((s, m) => s + parseInt(m.count || 0), 0);
+
+  const rows = months.map(m => `<tr>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;font-weight:600;">${MONTH_NAMES[m.month - 1]} ${year}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;">${m.count}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;font-weight:600;">${formatCurrency(m.total, sym)}</td>
+  </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+  ${reportHeader('MONTHLY REVENUE', `Year ${year}`, company)}
+  <table style="margin-bottom:20px;">
+    <thead><tr><th style="text-align:left;">Month</th><th style="text-align:center;width:20%;">Paid Invoices</th><th style="text-align:right;width:30%;">Revenue</th></tr></thead>
+    <tbody>
+      ${rows}
+      <tr style="background:#111827;color:#fff;font-weight:bold;">
+        <td style="border:1px solid #111827;padding:10px;">TOTAL</td>
+        <td style="border:1px solid #111827;padding:10px;text-align:center;">${totalCount}</td>
+        <td style="border:1px solid #111827;padding:10px;text-align:right;">${formatCurrency(totalRevenue, sym)}</td>
+      </tr>
+    </tbody>
+  </table>
+  ${reportFooter(`Generated on ${today}. Revenue reflects invoices marked paid within ${year}.`)}
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+async function generateAgingPDF(aging, company) {
+  const sym = (company && company.currencySymbol) || 'S$';
+  const today = formatDate(new Date().toISOString().slice(0, 10));
+  const buckets = ['0-30', '31-60', '60+'];
+
+  const summaryCells = buckets.map(b => {
+    const list = aging[b] || [];
+    const total = list.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0);
+    const color = b === '60+' ? '#dc2626' : b === '31-60' ? '#d97706' : '#111827';
+    return `<td style="border:1px solid #e5e7eb;padding:12px;text-align:center;">
+      <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${b} days</div>
+      <div style="font-size:18px;font-weight:bold;color:${color};">${list.length}</div>
+      <div style="font-size:11px;color:#6b7280;margin-top:2px;">${formatCurrency(total, sym)}</div>
+    </td>`;
+  }).join('');
+
+  const bucketTable = (b) => {
+    const list = aging[b] || [];
+    if (!list.length) return '';
+    const rows = list.map(inv => `<tr>
+      <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:11px;font-weight:600;">${inv.invoiceNo}</td>
+      <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:11px;">${inv.client?.companyName || '—'}</td>
+      <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:11px;text-align:right;">${inv.daysOverdue}d overdue</td>
+      <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:11px;text-align:right;font-weight:600;">${formatCurrency(inv.totalAmount, sym)}</td>
+    </tr>`).join('');
+    return `<div style="font-size:12px;font-weight:bold;color:#111827;margin:16px 0 8px;">${b} DAYS</div>
+    <table style="margin-bottom:8px;"><tbody>${rows}</tbody></table>`;
+  };
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+  ${reportHeader('INVOICE AGING', `As at ${today}`, company)}
+  <table style="margin-bottom:12px;"><tbody><tr>${summaryCells}</tr></tbody></table>
+  ${bucketTable('60+')}${bucketTable('31-60')}${bucketTable('0-30')}
+  ${!aging['0-30']?.length && !aging['31-60']?.length && !aging['60+']?.length ? '<div style="text-align:center;padding:24px;color:#9ca3af;">No outstanding invoices.</div>' : ''}
+  ${reportFooter(`Generated on ${today}.`)}
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+async function generateClientSummaryPDF(clients, company) {
+  const sym = (company && company.currencySymbol) || 'S$';
+  const today = formatDate(new Date().toISOString().slice(0, 10));
+
+  const totals = clients.reduce((acc, c) => {
+    acc.invoiceCount += c.invoiceCount || 0;
+    acc.totalBilled += c.totalBilled || 0;
+    acc.totalPaid += c.totalPaid || 0;
+    acc.outstanding += c.outstanding || 0;
+    return acc;
+  }, { invoiceCount: 0, totalBilled: 0, totalPaid: 0, outstanding: 0 });
+
+  const rows = clients.map(c => `<tr>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;font-weight:600;">${c.companyName} <span style="color:#9ca3af;font-weight:400;">(${c.clientCode || '—'})</span></td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;">${c.invoiceCount}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;">${formatCurrency(c.totalBilled, sym)}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;color:#16a34a;">${formatCurrency(c.totalPaid, sym)}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;${c.outstanding > 0 ? 'color:#d97706;font-weight:600;' : ''}">${formatCurrency(c.outstanding, sym)}</td>
+  </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+  ${reportHeader('CLIENT SUMMARY', `As at ${today}`, company)}
+  <table style="margin-bottom:20px;">
+    <thead><tr>
+      <th style="text-align:left;">Client</th>
+      <th style="text-align:center;width:12%;">Invoices</th>
+      <th style="text-align:right;width:18%;">Total Billed</th>
+      <th style="text-align:right;width:18%;">Paid</th>
+      <th style="text-align:right;width:18%;">Outstanding</th>
+    </tr></thead>
+    <tbody>
+      ${rows || '<tr><td colspan="5" style="text-align:center;padding:20px;color:#9ca3af;">No data.</td></tr>'}
+      ${clients.length ? `<tr style="background:#111827;color:#fff;font-weight:bold;">
+        <td style="border:1px solid #111827;padding:10px;">TOTAL</td>
+        <td style="border:1px solid #111827;padding:10px;text-align:center;">${totals.invoiceCount}</td>
+        <td style="border:1px solid #111827;padding:10px;text-align:right;">${formatCurrency(totals.totalBilled, sym)}</td>
+        <td style="border:1px solid #111827;padding:10px;text-align:right;">${formatCurrency(totals.totalPaid, sym)}</td>
+        <td style="border:1px solid #111827;padding:10px;text-align:right;">${formatCurrency(totals.outstanding, sym)}</td>
+      </tr>` : ''}
+    </tbody>
+  </table>
+  ${reportFooter(`Generated on ${today}.`)}
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+async function generateDriverReportPDF(drivers, company) {
+  const sym = (company && company.currencySymbol) || 'S$';
+  const today = formatDate(new Date().toISOString().slice(0, 10));
+
+  const rows = drivers.map(d => `<tr>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;font-weight:600;">${d.name}<div style="font-weight:400;color:#9ca3af;font-size:10px;">${d.email || ''}</div></td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;">${d.totalJobs}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;color:#16a34a;font-weight:600;">${d.completedJobs}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;">${d.daysWorked}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;font-weight:600;">${formatCurrency(d.linkedRevenue, sym)}</td>
+  </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+  ${reportHeader('DRIVER REPORT', `As at ${today}`, company)}
+  <table style="margin-bottom:20px;">
+    <thead><tr>
+      <th style="text-align:left;">Driver</th>
+      <th style="text-align:center;width:14%;">Total Jobs</th>
+      <th style="text-align:center;width:14%;">Completed</th>
+      <th style="text-align:center;width:16%;">Days Worked</th>
+      <th style="text-align:right;width:20%;">Linked Revenue</th>
+    </tr></thead>
+    <tbody>
+      ${rows || '<tr><td colspan="5" style="text-align:center;padding:20px;color:#9ca3af;">No driver data.</td></tr>'}
+    </tbody>
+  </table>
+  ${reportFooter(`Generated on ${today}.`)}
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+async function generateVehicleReportPDF(vehicles, company) {
+  const today = formatDate(new Date().toISOString().slice(0, 10));
+
+  const rows = vehicles.map(v => `<tr>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;font-weight:bold;">${v.plateNumber}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;color:#4b5563;">${v.type || '—'} ${v.size || ''}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:10px;text-align:center;">
+      <span style="background:${v.status === 'active' ? '#dcfce7' : '#f3f4f6'};color:${v.status === 'active' ? '#16a34a' : '#6b7280'};padding:2px 8px;border-radius:10px;font-weight:600;">${v.status}</span>
+    </td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;">${v.totalJobs}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;color:#16a34a;font-weight:600;">${v.completedJobs}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;">${v.totalDays}</td>
+  </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+  ${reportHeader('VEHICLE REPORT', `As at ${today}`, company)}
+  <table style="margin-bottom:20px;">
+    <thead><tr>
+      <th style="text-align:left;">Vehicle</th>
+      <th style="text-align:left;">Type / Size</th>
+      <th style="text-align:center;width:12%;">Status</th>
+      <th style="text-align:center;width:14%;">Total Jobs</th>
+      <th style="text-align:center;width:14%;">Completed</th>
+      <th style="text-align:center;width:14%;">Total Days</th>
+    </tr></thead>
+    <tbody>
+      ${rows || '<tr><td colspan="6" style="text-align:center;padding:20px;color:#9ca3af;">No vehicle data.</td></tr>'}
+    </tbody>
+  </table>
+  ${reportFooter(`Generated on ${today}.`)}
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+async function generateExpenseReportPDF(expenseSummary, company) {
+  const sym = (company && company.currencySymbol) || 'S$';
+  const today = formatDate(new Date().toISOString().slice(0, 10));
+  const driverSummary = expenseSummary.driverSummary || [];
+  const vehicleFuel = expenseSummary.vehicleFuel || [];
+
+  const driverRows = driverSummary.map(d => `<tr>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;font-weight:600;">${d.name}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;font-weight:600;">${formatCurrency(d.total, sym)}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;color:#16a34a;">${formatCurrency(d.approved, sym)}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;color:#d97706;">${formatCurrency(d.pending, sym)}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;color:#dc2626;">${formatCurrency(d.rejected, sym)}</td>
+  </tr>`).join('');
+
+  const fuelRows = vehicleFuel.map(v => `<tr>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;font-weight:600;">${v.plateNumber}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;">${v.type || '—'}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;">${formatCurrency(v.petrolCost, sym)}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;">${v.petrolLiters > 0 ? v.petrolLiters.toFixed(1) + 'L' : '—'}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;">${formatCurrency(v.dieselCost, sym)}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;">${v.dieselLiters > 0 ? v.dieselLiters.toFixed(1) + 'L' : '—'}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;font-weight:600;">${formatCurrency(v.petrolCost + v.dieselCost, sym)}</td>
+  </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+  ${reportHeader('EXPENSE REPORT', `As at ${today}`, company)}
+  <div style="font-size:13px;font-weight:bold;color:#111827;margin-bottom:8px;">Driver Expenses</div>
+  <table style="margin-bottom:20px;">
+    <thead><tr>
+      <th style="text-align:left;">Driver</th>
+      <th style="text-align:right;width:18%;">Total</th>
+      <th style="text-align:right;width:18%;">Approved</th>
+      <th style="text-align:right;width:18%;">Pending</th>
+      <th style="text-align:right;width:18%;">Rejected</th>
+    </tr></thead>
+    <tbody>${driverRows || '<tr><td colspan="5" style="text-align:center;padding:20px;color:#9ca3af;">No expense data.</td></tr>'}</tbody>
+  </table>
+  <div style="font-size:13px;font-weight:bold;color:#111827;margin-bottom:8px;">Vehicle Fuel Usage</div>
+  <table style="margin-bottom:20px;">
+    <thead><tr>
+      <th style="text-align:left;">Vehicle</th>
+      <th style="text-align:left;">Type</th>
+      <th style="text-align:right;">Petrol Cost</th>
+      <th style="text-align:right;">Petrol Liters</th>
+      <th style="text-align:right;">Diesel Cost</th>
+      <th style="text-align:right;">Diesel Liters</th>
+      <th style="text-align:right;">Total Fuel Cost</th>
+    </tr></thead>
+    <tbody>${fuelRows || '<tr><td colspan="7" style="text-align:center;padding:20px;color:#9ca3af;">No fuel expenses logged.</td></tr>'}</tbody>
+  </table>
+  ${reportFooter(`Generated on ${today}.`)}
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+async function generateAttendancePDF(attendanceData, year, month, company) {
+  const today = formatDate(new Date().toISOString().slice(0, 10));
+  const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const periodLabel = month ? `${MONTH_SHORT[month - 1]} ${year}` : `Year ${year}`;
+
+  const monthHeaders = MONTH_SHORT.map(m => `<th style="text-align:center;width:5.5%;">${m}</th>`).join('');
+  const rows = attendanceData.map(d => {
+    const cells = MONTH_SHORT.map((_, i) => {
+      const key = `${year}-${String(i + 1).padStart(2, '0')}`;
+      const count = d.months[key];
+      return `<td style="border:1px solid #e5e7eb;padding:6px;font-size:10px;text-align:center;${count ? 'font-weight:600;color:#1d4ed8;' : 'color:#d1d5db;'}">${count || '—'}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="border:1px solid #e5e7eb;padding:6px 8px;font-size:10px;font-weight:600;">${d.name}</td>
+      ${cells}
+      <td style="border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;text-align:right;font-weight:bold;">${d.totalDays}</td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle} body{padding:32px;}</style></head><body>
+  ${reportHeader('ATTENDANCE REPORT', periodLabel, company)}
+  <table style="margin-bottom:20px;">
+    <thead><tr><th style="text-align:left;">Driver</th>${monthHeaders}<th style="text-align:right;width:8%;">Total</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="14" style="text-align:center;padding:20px;color:#9ca3af;">No completed attendance records.</td></tr>`}</tbody>
+  </table>
+  ${reportFooter(`Generated on ${today}.`)}
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+async function generatePnlPDF(pnlData, company) {
+  const sym = (company && company.currencySymbol) || 'S$';
+  const today = formatDate(new Date().toISOString().slice(0, 10));
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  const monthRows = pnlData.months.map(m => `<tr>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;font-weight:600;">${MONTH_NAMES[m.month - 1]} ${pnlData.year}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;color:#16a34a;">${formatCurrency(m.revenue, sym)}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;color:#dc2626;">${m.expenses > 0 ? formatCurrency(m.expenses, sym) : '—'}</td>
+    <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;font-weight:600;color:${m.profit >= 0 ? '#1d4ed8' : '#dc2626'};">${formatCurrency(m.profit, sym)}</td>
+  </tr>`).join('');
+
+  const jobRows = (pnlData.jobProfitability || []).map(j => `<tr>
+    <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:10.5px;font-weight:600;">${j.description || '—'}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:10.5px;">${j.client || '—'}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:10.5px;">${j.driver || '—'}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:10.5px;text-align:right;">${j.revenue > 0 ? formatCurrency(j.revenue, sym) : 'Not invoiced'}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:10.5px;text-align:right;">${j.expenses > 0 ? formatCurrency(j.expenses, sym) : '—'}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:10.5px;text-align:right;font-weight:600;color:${j.profit >= 0 ? '#1d4ed8' : '#dc2626'};">${formatCurrency(j.profit, sym)}</td>
+  </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+  ${reportHeader('PROFIT &amp; LOSS', `Year ${pnlData.year}`, company)}
+  <table style="margin-bottom:16px;"><tbody><tr>
+    <td style="border:1px solid #e5e7eb;padding:12px;text-align:center;width:33%;"><div style="font-size:10px;color:#6b7280;text-transform:uppercase;">Total Revenue</div><div style="font-size:16px;font-weight:bold;color:#16a34a;margin-top:4px;">${formatCurrency(pnlData.totalRevenue, sym)}</div></td>
+    <td style="border:1px solid #e5e7eb;padding:12px;text-align:center;width:33%;"><div style="font-size:10px;color:#6b7280;text-transform:uppercase;">Total Expenses</div><div style="font-size:16px;font-weight:bold;color:#dc2626;margin-top:4px;">${formatCurrency(pnlData.totalExpenses, sym)}</div></td>
+    <td style="border:1px solid #e5e7eb;padding:12px;text-align:center;width:33%;"><div style="font-size:10px;color:#6b7280;text-transform:uppercase;">Net Profit</div><div style="font-size:16px;font-weight:bold;color:${pnlData.totalProfit >= 0 ? '#1d4ed8' : '#dc2626'};margin-top:4px;">${formatCurrency(pnlData.totalProfit, sym)}</div></td>
+  </tr></tbody></table>
+  <div style="font-size:13px;font-weight:bold;color:#111827;margin-bottom:8px;">Monthly Breakdown</div>
+  <table style="margin-bottom:20px;">
+    <thead><tr><th style="text-align:left;">Month</th><th style="text-align:right;">Revenue</th><th style="text-align:right;">Expenses</th><th style="text-align:right;">Profit</th></tr></thead>
+    <tbody>${monthRows}</tbody>
+  </table>
+  ${jobRows ? `<div style="font-size:13px;font-weight:bold;color:#111827;margin-bottom:8px;">Job Profitability</div>
+  <table style="margin-bottom:20px;">
+    <thead><tr><th style="text-align:left;">Job</th><th style="text-align:left;">Client</th><th style="text-align:left;">Driver</th><th style="text-align:right;">Revenue</th><th style="text-align:right;">Expenses</th><th style="text-align:right;">Profit</th></tr></thead>
+    <tbody>${jobRows}</tbody>
+  </table>` : ''}
+  ${reportFooter(`Generated on ${today}.`)}
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+async function generateJobSummaryPDF(jobs, company) {
+  const sym = (company && company.currencySymbol) || 'S$';
+  const today = formatDate(new Date().toISOString().slice(0, 10));
+
+  const rows = jobs.map(j => `<tr>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10.5px;font-weight:600;">${j.description || '—'}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10.5px;">${j.client}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10.5px;">${j.driver}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10.5px;">${j.vehicle}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10px;text-align:center;">${j.fromDate || '—'}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10px;text-align:center;">${j.toDate || '—'}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10.5px;text-align:center;">${j.status}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10px;">${j.invoiceNo}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10.5px;text-align:right;font-weight:600;">${j.amount > 0 ? formatCurrency(j.amount, sym) : '—'}</td>
+  </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle} body{padding:32px;}</style></head><body>
+  ${reportHeader('JOB SUMMARY', `As at ${today}`, company)}
+  <table style="margin-bottom:20px;">
+    <thead><tr>
+      <th style="text-align:left;">Description</th><th style="text-align:left;">Client</th><th style="text-align:left;">Driver</th><th style="text-align:left;">Vehicle</th>
+      <th style="text-align:center;">From</th><th style="text-align:center;">To</th><th style="text-align:center;">Status</th><th style="text-align:left;">Invoice</th><th style="text-align:right;">Amount</th>
+    </tr></thead>
+    <tbody>${rows || '<tr><td colspan="9" style="text-align:center;padding:20px;color:#9ca3af;">No jobs found.</td></tr>'}</tbody>
+  </table>
+  ${reportFooter(`Generated on ${today}. ${jobs.length} job(s) listed.`)}
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+async function generateArActionPDF(arData, company) {
+  const sym = (company && company.currencySymbol) || 'S$';
+  const today = formatDate(new Date().toISOString().slice(0, 10));
+
+  const rows = arData.map(r => `<tr>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10.5px;font-weight:600;">${r.clientName}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10.5px;">${r.contactPerson}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10.5px;">${r.phone}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10.5px;">${r.invoiceNo}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10.5px;text-align:right;font-weight:600;">${formatCurrency(r.amount, sym)}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10px;text-align:center;">${formatDate(r.invoiceDate)}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10px;text-align:center;${r.daysOverdue > 0 ? 'color:#dc2626;font-weight:600;' : ''}">${r.dueDate ? formatDate(r.dueDate) : '—'}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10.5px;text-align:right;font-weight:bold;color:${r.daysOverdue > 0 ? '#dc2626' : '#d97706'};">${r.daysOverdue > 0 ? `${r.daysOverdue}d` : 'Due soon'}</td>
+    <td style="border:1px solid #e5e7eb;padding:8px 9px;font-size:10px;text-align:center;">${r.lastPaymentDate ? formatDate(r.lastPaymentDate) : '—'}</td>
+  </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle} body{padding:32px;}</style></head><body>
+  ${reportHeader('A/R ACTION LIST', `As at ${today}`, company)}
+  <table style="margin-bottom:20px;">
+    <thead><tr>
+      <th style="text-align:left;">Client</th><th style="text-align:left;">Contact</th><th style="text-align:left;">Phone</th><th style="text-align:left;">Invoice No</th>
+      <th style="text-align:right;">Amount</th><th style="text-align:center;">Invoice Date</th><th style="text-align:center;">Due Date</th><th style="text-align:right;">Days Overdue</th><th style="text-align:center;">Last Payment</th>
+    </tr></thead>
+    <tbody>${rows || '<tr><td colspan="9" style="text-align:center;padding:20px;color:#9ca3af;">No outstanding invoices.</td></tr>'}</tbody>
+  </table>
+  ${reportFooter(`Generated on ${today}. ${arData.length} outstanding invoice(s).`)}
+</body></html>`;
+
+  return generatePDFBuffer(html);
+}
+
+module.exports = {
+  generateInvoicePDF, generateQuotationPDF, generateSOAPDF, generatePayrollPDF, generateFleetCompliancePDF,
+  generateRevenuePDF, generateAgingPDF, generateClientSummaryPDF, generateDriverReportPDF, generateVehicleReportPDF,
+  generateExpenseReportPDF, generateAttendancePDF, generatePnlPDF, generateJobSummaryPDF, generateArActionPDF,
+};

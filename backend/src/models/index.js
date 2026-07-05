@@ -26,6 +26,8 @@ db.DeliveryItem = require('./DeliveryItem')(sequelize, Sequelize.DataTypes);
 db.ItemCatalog = require('./ItemCatalog')(sequelize, Sequelize.DataTypes);
 db.JobAttendance = require('./JobAttendance')(sequelize, Sequelize.DataTypes);
 db.Expense = require('./Expense')(sequelize, Sequelize.DataTypes);
+db.Category = require('./Category')(sequelize, Sequelize.DataTypes);
+db.ClientCategory = require('./ClientCategory')(sequelize, Sequelize.DataTypes);
 
 // Associations
 db.Client.hasMany(db.Quotation, { foreignKey: 'clientId', as: 'quotations' });
@@ -88,5 +90,13 @@ db.Job.hasMany(db.Expense, { foreignKey: 'jobId', as: 'expenses' });
 db.Expense.belongsTo(db.Job, { foreignKey: 'jobId', as: 'job' });
 db.User.hasMany(db.Expense, { foreignKey: 'approvedById', as: 'approvedExpenses' });
 db.Expense.belongsTo(db.User, { foreignKey: 'approvedById', as: 'approvedBy' });
+
+// Category associations
+db.Client.belongsToMany(db.Category, { through: db.ClientCategory, foreignKey: 'clientId', otherKey: 'categoryId', as: 'categories' });
+db.Category.belongsToMany(db.Client, { through: db.ClientCategory, foreignKey: 'categoryId', otherKey: 'clientId', as: 'clients' });
+db.Category.hasMany(db.DeliveryLog, { foreignKey: 'categoryId', as: 'deliveryLogs' });
+db.DeliveryLog.belongsTo(db.Category, { foreignKey: 'categoryId', as: 'category' });
+db.Category.hasMany(db.Invoice, { foreignKey: 'categoryId', as: 'invoices' });
+db.Invoice.belongsTo(db.Category, { foreignKey: 'categoryId', as: 'category' });
 
 module.exports = db;
