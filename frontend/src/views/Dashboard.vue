@@ -1,15 +1,21 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { reportsApi } from '../api/index.js';
+import { reportsApi, jobsApi } from '../api/index.js';
+import { useAuthStore } from '../stores/auth.js';
 import { Bar } from 'vue-chartjs';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import StatusBadge from '../components/shared/StatusBadge.vue';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
+const auth = useAuthStore();
 const stats = ref(null);
 const revenueMonths = ref(null);
 const loading = ref(true);
+
+// Drivers can't call the admin/staff-only reports endpoints — this stays
+// null for them and the template branches to a lightweight jobs summary.
+const driverJobs = ref([]);
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const now = new Date();
@@ -28,15 +34,25 @@ function fmtDate(d) {
 
 onMounted(async () => {
   try {
-    const [dashRes, revRes] = await Promise.all([
-      reportsApi.dashboard(),
-      reportsApi.revenue(now.getFullYear()),
-    ]);
-    stats.value = dashRes.data;
-    revenueMonths.value = revRes.data.months;
+    if (auth.isDriver) {
+      driverJobs.value = (await jobsApi.list()).data;
+    } else {
+      const [dashRes, revRes] = await Promise.all([
+        reportsApi.dashboard(),
+        reportsApi.revenue(now.getFullYear()),
+      ]);
+      stats.value = dashRes.data;
+      revenueMonths.value = revRes.data.months;
+    }
   } finally {
     loading.value = false;
   }
+});
+
+const driverActiveJobs = computed(() => driverJobs.value.filter(j => ['pending', 'in_transit'].includes(j.status)));
+const driverTodayJobs = computed(() => {
+  const todayStr = now.toISOString().slice(0, 10);
+  return driverActiveJobs.value.filter(j => j.fromDate <= todayStr && j.toDate >= todayStr);
 });
 
 const yearTotal = computed(() => (revenueMonths.value || []).reduce((s, m) => s + m.total, 0));
@@ -176,6 +192,71 @@ const accentClasses = {
     <div class="grid lg:grid-cols-2 gap-5">
       <div class="card h-72 animate-pulse motion-reduce:animate-none"></div>
       <div class="card h-72 animate-pulse motion-reduce:animate-none"></div>
+    </div>
+  </div>
+
+  <!-- Driver dashboard — no access to admin/staff report data, so this
+       branch never calls reportsApi and shows a lightweight jobs summary
+       plus quick links to the pages drivers actually use. -->
+  <div v-else-if="auth.isDriver" class="space-y-5 page-container">
+    <div>
+      <h1 class="page-title mb-0.5">Welcome, {{ auth.user?.name }}</h1>
+      <p class="text-sm text-gray-500 dark:text-slate-400">
+        {{ driverActiveJobs.length ? `You have ${driverActiveJobs.length} active job${driverActiveJobs.length === 1 ? '' : 's'}.` : 'No active jobs right now.' }}
+      </p>
+    </div>
+
+    <div v-if="driverTodayJobs.length" class="card p-0">
+      <div class="card-header"><span class="card-title">Today's Jobs</span></div>
+      <div class="table-wrap">
+        <table class="mat-table">
+          <tbody>
+            <tr v-for="job in driverTodayJobs" :key="job.id">
+              <td class="px-4 py-3">
+                <RouterLink :to="`/jobs/${job.id}`" class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">{{ job.description }}</RouterLink>
+                <div class="text-xs text-gray-400 dark:text-slate-500">{{ job.client?.companyName }}</div>
+              </td>
+              <td class="px-4 py-3"><StatusBadge :status="job.status"/></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <RouterLink to="/jobs" class="card hover:shadow-md dark:hover:shadow-none dark:hover:border-slate-600 transition-all">
+        <div class="flex items-center gap-3">
+          <span class="w-9 h-9 rounded-lg bg-sky-50 dark:bg-sky-900/30 flex items-center justify-center shrink-0">
+            <span class="material-icons text-sky-600 dark:text-sky-400" style="font-size:18px">local_shipping</span>
+          </span>
+          <div>
+            <div class="text-sm font-semibold text-gray-900 dark:text-slate-100">My Jobs</div>
+            <div class="text-xs text-gray-400 dark:text-slate-500">{{ driverActiveJobs.length }} active</div>
+          </div>
+        </div>
+      </RouterLink>
+      <RouterLink to="/delivery-log" class="card hover:shadow-md dark:hover:shadow-none dark:hover:border-slate-600 transition-all">
+        <div class="flex items-center gap-3">
+          <span class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+            <span class="material-icons text-blue-600 dark:text-blue-400" style="font-size:18px">inventory_2</span>
+          </span>
+          <div>
+            <div class="text-sm font-semibold text-gray-900 dark:text-slate-100">Delivery Log</div>
+            <div class="text-xs text-gray-400 dark:text-slate-500">Log a delivery trip</div>
+          </div>
+        </div>
+      </RouterLink>
+      <RouterLink to="/expenses" class="card hover:shadow-md dark:hover:shadow-none dark:hover:border-slate-600 transition-all">
+        <div class="flex items-center gap-3">
+          <span class="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+            <span class="material-icons text-amber-600 dark:text-amber-400" style="font-size:18px">payments</span>
+          </span>
+          <div>
+            <div class="text-sm font-semibold text-gray-900 dark:text-slate-100">Expenses</div>
+            <div class="text-xs text-gray-400 dark:text-slate-500">Submit a claim</div>
+          </div>
+        </div>
+      </RouterLink>
     </div>
   </div>
 

@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { useSettingsStore } from '../../stores/settings.js';
 
-const props = defineProps({ open: Boolean });
+defineProps({ open: Boolean });
 const emit = defineEmits(['close']);
 
 const auth = useAuthStore();
