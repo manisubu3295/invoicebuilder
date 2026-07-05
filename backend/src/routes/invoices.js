@@ -301,7 +301,6 @@ router.post('/:id/cancel', rbac('admin', 'staff'), async (req, res) => {
     const invoice = await Invoice.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
     if (invoice.status === 'cancelled') return res.status(400).json({ message: 'Invoice is already cancelled' });
-    if (invoice.status === 'paid') return res.status(400).json({ message: 'A paid invoice cannot be cancelled' });
     await invoice.update({ status: 'cancelled' });
     res.json({ message: 'Invoice cancelled' });
   } catch (err) {
@@ -309,9 +308,11 @@ router.post('/:id/cancel', rbac('admin', 'staff'), async (req, res) => {
   }
 });
 
-// Hard delete — permanently removes the invoice. Admin-only, and only for
-// draft/cancelled invoices with no payment history (use Cancel first for
-// anything else, or record why the payment must be removed manually).
+// Hard delete — permanently removes the invoice, including any recorded
+// payments against it. Admin-only, and only for draft/cancelled invoices
+// (cancel it first). Deleting a paid invoice destroys its payment history
+// with no way to recover it — there is no confirmation beyond the
+// frontend's dialog, so treat this as a last resort, not routine cleanup.
 router.delete('/:id', rbac('admin'), async (req, res) => {
   try {
     const invoice = await Invoice.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
@@ -319,10 +320,7 @@ router.delete('/:id', rbac('admin'), async (req, res) => {
     if (!['draft', 'cancelled'].includes(invoice.status)) {
       return res.status(400).json({ message: 'Only draft or cancelled invoices can be permanently deleted — cancel it first' });
     }
-    const paymentCount = await Payment.count({ where: { invoiceId: invoice.id } });
-    if (paymentCount > 0) {
-      return res.status(409).json({ message: `Cannot permanently delete: this invoice has ${paymentCount} payment record(s) against it.` });
-    }
+    await Payment.destroy({ where: { invoiceId: invoice.id } });
     await InvoiceItem.destroy({ where: { invoiceId: invoice.id } });
     await invoice.destroy();
     res.json({ message: 'Invoice permanently deleted' });

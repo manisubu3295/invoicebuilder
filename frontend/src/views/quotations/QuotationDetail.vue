@@ -194,7 +194,7 @@ onMounted(async () => {
         <button v-if="['draft','sent'].includes(q.status)" @click="markAccepted" :disabled="actionLoading === 'mark-accepted'" class="btn-secondary text-green-700 border-green-200 hover:bg-green-50">{{ actionLoading === 'mark-accepted' ? 'Updating…' : 'Mark as Accepted' }}</button>
         <button v-if="['draft','sent'].includes(q.status)" @click="markRejected" :disabled="actionLoading === 'mark-rejected'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'mark-rejected' ? 'Updating…' : 'Mark as Rejected' }}</button>
         <button v-if="['sent','accepted'].includes(q.status)" @click="convertToInvoice" :disabled="actionLoading === 'convert'" class="btn-primary">{{ actionLoading === 'convert' ? 'Converting…' : 'Convert to Invoice' }}</button>
-        <button v-if="!['cancelled','converted'].includes(q.status)" @click="cancelQuotation" :disabled="actionLoading === 'cancel'" class="btn-secondary text-amber-700 border-amber-200 hover:bg-amber-50">{{ actionLoading === 'cancel' ? '…' : 'Cancel Quotation' }}</button>
+        <button v-if="q.status !== 'cancelled'" @click="cancelQuotation" :disabled="actionLoading === 'cancel'" class="btn-secondary text-amber-700 border-amber-200 hover:bg-amber-50">{{ actionLoading === 'cancel' ? '…' : 'Cancel Quotation' }}</button>
         <button v-if="authStore.isAdmin && ['draft','cancelled'].includes(q.status)" @click="deleteQuotation" :disabled="actionLoading === 'delete'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'delete' ? 'Deleting…' : 'Delete Permanently' }}</button>
       </div>
     </div>

@@ -240,7 +240,10 @@ router.post('/:id/cancel', rbac('admin', 'staff'), async (req, res) => {
     const q = await Quotation.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!q) return res.status(404).json({ message: 'Quotation not found' });
     if (q.status === 'cancelled') return res.status(400).json({ message: 'Quotation is already cancelled' });
-    if (q.status === 'converted') return res.status(400).json({ message: 'A converted quotation cannot be cancelled' });
+    const invoiceCount = await Invoice.count({ where: { quotationId: q.id } });
+    if (invoiceCount > 0) {
+      return res.status(400).json({ message: `Cannot cancel: ${invoiceCount} invoice(s) were created from this quotation. Cancel or delete those first.` });
+    }
     await q.update({ status: 'cancelled' });
     res.json({ message: 'Quotation cancelled' });
   } catch (err) {

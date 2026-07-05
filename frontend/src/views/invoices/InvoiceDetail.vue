@@ -125,7 +125,10 @@ async function confirmMarkPaid() {
 }
 
 async function cancelInvoice() {
-  if (!confirm('Cancel this invoice? It stays on record but is marked cancelled.')) return;
+  const msg = invoice.value.status === 'paid'
+    ? 'Cancel this PAID invoice? Its payment records stay on file, but the invoice will be marked cancelled.'
+    : 'Cancel this invoice? It stays on record but is marked cancelled.';
+  if (!confirm(msg)) return;
   actionLoading.value = 'cancel';
   try {
     await invoicesApi.cancel(invoice.value.id);
@@ -136,7 +139,10 @@ async function cancelInvoice() {
 }
 
 async function deleteInvoice() {
-  if (!confirm('Permanently delete this invoice? This cannot be undone.')) return;
+  const msg = invoice.value.payments?.length
+    ? `Permanently delete this invoice AND its ${invoice.value.payments.length} payment record(s)? This destroys payment history and cannot be undone.`
+    : 'Permanently delete this invoice? This cannot be undone.';
+  if (!confirm(msg)) return;
   actionLoading.value = 'delete';
   try {
     await invoicesApi.remove(invoice.value.id);
@@ -230,7 +236,7 @@ onMounted(async () => {
         <button v-if="!['paid','cancelled'].includes(invoice.status)" @click="sendEmail" :disabled="actionLoading === 'email'" class="btn-secondary">{{ actionLoading === 'email' ? 'Sending…' : 'Send Email' }}</button>
         <button v-if="invoice.status === 'draft'" @click="markSent" :disabled="actionLoading === 'sent'" class="btn-secondary text-indigo-600 border-indigo-200 hover:bg-indigo-50">{{ actionLoading === 'sent' ? '…' : 'Mark as Sent' }}</button>
         <button v-if="['sent','overdue'].includes(invoice.status)" @click="openPaidModal" :disabled="actionLoading === 'paid'" class="btn-primary">{{ actionLoading === 'paid' ? '…' : 'Mark Paid' }}</button>
-        <button v-if="!['cancelled','paid'].includes(invoice.status)" @click="cancelInvoice" :disabled="actionLoading === 'cancel'" class="btn-secondary text-amber-700 border-amber-200 hover:bg-amber-50">{{ actionLoading === 'cancel' ? '…' : 'Cancel Invoice' }}</button>
+        <button v-if="invoice.status !== 'cancelled'" @click="cancelInvoice" :disabled="actionLoading === 'cancel'" class="btn-secondary text-amber-700 border-amber-200 hover:bg-amber-50">{{ actionLoading === 'cancel' ? '…' : 'Cancel Invoice' }}</button>
         <button v-if="authStore.isAdmin && ['draft','cancelled'].includes(invoice.status)" @click="deleteInvoice" :disabled="actionLoading === 'delete'" class="btn-secondary text-red-600 border-red-200 hover:bg-red-50">{{ actionLoading === 'delete' ? 'Deleting…' : 'Delete Permanently' }}</button>
       </div>
     </div>
