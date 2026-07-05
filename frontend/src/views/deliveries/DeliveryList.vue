@@ -73,6 +73,17 @@ async function deleteLog(log) {
   } finally { deleting.value = null; }
 }
 
+async function deletePermanent(log) {
+  if (!confirm(`Permanently delete delivery entry for ${log.client?.companyName} on ${fmt(log.deliveryDate)}? This cannot be undone.`)) return;
+  deleting.value = log.id;
+  try {
+    await deliveriesApi.removePermanent(log.id);
+    logs.value = logs.value.filter(l => l.id !== log.id);
+  } catch (e) {
+    alert(e.response?.data?.message || 'Delete failed.');
+  } finally { deleting.value = null; }
+}
+
 function goInvoiceForClient(cs) {
   const dates = cs.dates.slice().sort();
   router.push({ path: '/delivery-log/invoice', query: { clientId: cs.client.id, startDate: dates[0], endDate: dates[dates.length - 1] } });
@@ -195,6 +206,10 @@ function goGenerateInvoice() {
               </button>
               <button v-if="log.status !== 'invoiced' && (auth.user?.role === 'admin' || log.deliveredById === auth.user?.id)"
                 @click="deleteLog(log)" :disabled="deleting === log.id" class="btn-icon text-gray-400 hover:text-red-700 disabled:opacity-40" title="Delete">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              </button>
+              <button v-if="auth.user?.role === 'admin' && log.status === 'invoiced'"
+                @click="deletePermanent(log)" :disabled="deleting === log.id" class="btn-icon text-gray-400 hover:text-red-700 disabled:opacity-40" title="Delete permanently (overrides invoiced lock)">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
               </button>
             </div>

@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { Op } = require('sequelize');
-const { DeliveryLog, DeliveryItem, Client, User } = require('../models');
+const { DeliveryLog, DeliveryItem, Client, User, InvoiceItem } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 
@@ -198,6 +198,28 @@ router.delete('/:id', async (req, res) => {
     await DeliveryItem.destroy({ where: { deliveryLogId: log.id } });
     await log.destroy();
     res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Hard delete — permanently removes the delivery entry, even one already
+// marked invoiced. Admin-only, blocked if an invoice line item still
+// references it (the real dependency — status alone isn't checked here so
+// this also recovers from a stale/incorrect "invoiced" status).
+router.delete('/:id/permanent', rbac('admin'), async (req, res) => {
+  try {
+    const log = await DeliveryLog.findByPk(req.params.id);
+    if (!log) return res.status(404).json({ message: 'Not found' });
+
+    const linkedItemCount = await InvoiceItem.count({ where: { deliveryLogId: log.id } });
+    if (linkedItemCount > 0) {
+      return res.status(409).json({ message: `Cannot permanently delete: this delivery is on ${linkedItemCount} invoice line item(s). Remove those first.` });
+    }
+
+    await DeliveryItem.destroy({ where: { deliveryLogId: log.id } });
+    await log.destroy();
+    res.json({ message: 'Delivery entry permanently deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

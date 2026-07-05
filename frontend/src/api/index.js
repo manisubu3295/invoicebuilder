@@ -135,5 +135,6 @@ export const deliveriesApi = {
   create: (data) => api.post('/deliveries', data),
   update: (id, data) => api.put(`/deliveries/${id}`, data),
   remove: (id) => api.delete(`/deliveries/${id}`),
+  removePermanent: (id) => api.delete(`/deliveries/${id}/permanent`),
   createInvoice: (data) => api.post('/invoices/from-deliveries', data),
 };
