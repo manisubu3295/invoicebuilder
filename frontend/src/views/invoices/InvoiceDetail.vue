@@ -152,6 +152,8 @@ async function deleteInvoice() {
 
 async function reload() { invoice.value = (await invoicesApi.get(route.params.id)).data; }
 
+const hasRunSheet = computed(() => !!invoice.value?.items?.some(i => i.runSheetNo));
+
 const daysUntilDue = computed(() => {
   if (!invoice.value?.dueDate) return null;
   return Math.ceil((new Date(invoice.value.dueDate) - new Date()) / (1000 * 60 * 60 * 24));
@@ -317,20 +319,21 @@ onMounted(async () => {
             <tr class="bg-slate-800 text-white text-xs uppercase tracking-wide">
               <th class="px-3 py-2.5 text-center w-8 border border-slate-700">#</th>
               <th class="px-3 py-2.5 text-left border border-slate-700">Description</th>
+              <th v-if="hasRunSheet" class="px-3 py-2.5 text-center w-28 border border-slate-700">Run Sheet</th>
               <th class="px-3 py-2.5 text-center w-32 border border-slate-700">Period</th>
               <th class="px-3 py-2.5 text-right w-28 border border-slate-700">Rate</th>
               <th class="px-3 py-2.5 text-right w-28 border border-slate-700">Amount</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-if="!invoice.items?.length"><td colspan="5" class="px-3 py-8 text-center text-gray-400 border border-gray-200">No items</td></tr>
+            <tr v-if="!invoice.items?.length"><td colspan="6" class="px-3 py-8 text-center text-gray-400 border border-gray-200">No items</td></tr>
             <tr v-for="item in invoice.items?.slice().sort((a,b)=>a.sno-b.sno)" :key="item.id" class="border-b border-gray-200 hover:bg-gray-50">
               <td class="px-3 py-3 text-center text-gray-400 border border-gray-200">{{ item.sno }}</td>
               <td class="px-3 py-3 border border-gray-200">
                 <span class="font-medium text-slate-800">{{ item.jobDescription }}</span>
                 <div v-if="item.itemType !== 'delivery' && item.fromDate" class="text-gray-400 text-xs mt-0.5">{{ fmtDate(item.fromDate) }} – {{ fmtDate(item.toDate) }}</div>
-                <div v-if="item.runSheetNo" class="text-gray-400 text-xs mt-0.5">Run Sheet: {{ item.runSheetNo }}</div>
               </td>
+              <td v-if="hasRunSheet" class="px-3 py-3 text-center text-gray-600 text-xs border border-gray-200">{{ item.runSheetNo || '—' }}</td>
               <td class="px-3 py-3 text-center text-gray-600 text-xs border border-gray-200">{{ calcPeriod(item) }}</td>
               <td class="px-3 py-3 text-right text-xs border border-gray-200">
                 <span v-if="rateLabel(item)" class="text-slate-700">{{ rateLabel(item) }}</span>

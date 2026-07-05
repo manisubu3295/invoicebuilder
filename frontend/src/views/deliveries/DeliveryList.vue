@@ -61,6 +61,9 @@ function fmt(d) {
 function logTotal(log) {
   return (log.items?.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0) || 0).toFixed(2);
 }
+function logHasRunSheet(log) {
+  return !!log.items?.some(i => i.runSheetNo);
+}
 
 async function deleteLog(log) {
   if (!confirm(`Delete delivery entry for ${log.client?.companyName} on ${fmt(log.deliveryDate)}?`)) return;
@@ -180,6 +183,7 @@ function goGenerateInvoice() {
               <table class="text-xs text-gray-600 w-full max-w-lg">
                 <thead><tr class="text-gray-400 uppercase text-[10px]">
                   <th class="text-left pb-1 pr-4">Item</th>
+                  <th v-if="logHasRunSheet(log)" class="text-left pb-1 pr-4">Run Sheet</th>
                   <th class="text-right pb-1 pr-4">Qty</th>
                   <th class="text-right pb-1 pr-4">Unit Price</th>
                   <th class="text-right pb-1">Total</th>
@@ -187,13 +191,14 @@ function goGenerateInvoice() {
                 <tbody>
                   <tr v-for="item in log.items" :key="item.id" class="border-t border-gray-100">
                     <td class="py-0.5 pr-4">{{ item.itemName }}</td>
+                    <td v-if="logHasRunSheet(log)" class="py-0.5 pr-4">{{ item.runSheetNo || '—' }}</td>
                     <td class="py-0.5 pr-4 text-right tabular-nums">{{ parseFloat(item.quantity).toFixed(3).replace(/\.?0+$/, '') }}</td>
                     <td class="py-0.5 pr-4 text-right tabular-nums">{{ parseFloat(item.unitPrice).toFixed(2) }}</td>
                     <td class="py-0.5 text-right font-medium tabular-nums">{{ parseFloat(item.totalAmount).toFixed(2) }}</td>
                   </tr>
                 </tbody>
                 <tfoot><tr>
-                  <td colspan="3" class="pt-1.5 text-right font-semibold text-gray-700 pr-4">Entry Total</td>
+                  <td :colspan="logHasRunSheet(log) ? 4 : 3" class="pt-1.5 text-right font-semibold text-gray-700 pr-4">Entry Total</td>
                   <td class="pt-1.5 text-right font-bold text-gray-900 tabular-nums">{{ logTotal(log) }}</td>
                 </tr></tfoot>
               </table>
