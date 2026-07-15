@@ -3,8 +3,16 @@ const { Op } = require('sequelize');
 const { DeliveryLog, DeliveryItem, Client, User, InvoiceItem, Category } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
+const { findInvalidCatalogItem } = require('../services/catalogValidation');
 
 router.use(auth);
+
+// Drivers may only log items that exist in the catalog — no free-typed
+// items — so a delivery entry always ties back to a priced catalog item.
+// Admin/staff keep the ability to type a custom item.
+function validateDriverItems(items) {
+  return findInvalidCatalogItem(items, { nameField: 'itemName' });
+}
 
 const fullInclude = [
   { model: Client, as: 'client', attributes: ['id', 'companyName', 'clientCode'] },
@@ -124,6 +132,11 @@ router.post('/', async (req, res) => {
     }
     if (!categoryId) return res.status(400).json({ message: 'Category is required' });
 
+    if (req.user.role === 'driver') {
+      const err = await validateDriverItems(items);
+      if (err) return res.status(400).json({ message: err });
+    }
+
     const canChooseDeliverer = req.user.role === 'admin' || req.user.role === 'staff';
     const deliveredById = canChooseDeliverer && req.body.deliveredById
       ? req.body.deliveredById
@@ -171,6 +184,12 @@ router.put('/:id', async (req, res) => {
 
     const { deliveryDate, notes, items, deliveredById, categoryId } = req.body;
     if (categoryId !== undefined && !categoryId) return res.status(400).json({ message: 'Category is required' });
+
+    if (items && req.user.role === 'driver') {
+      const err = await validateDriverItems(items);
+      if (err) return res.status(400).json({ message: err });
+    }
+
     const updateFields = { deliveryDate, notes };
     if (categoryId) updateFields.categoryId = categoryId;
     if (req.user.role === 'admin' && deliveredById) updateFields.deliveredById = deliveredById;

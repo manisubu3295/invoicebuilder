@@ -881,6 +881,208 @@ function buildItemMatrixInvoiceHtml(invoice, client, items, settings = {}) {
 </body></html>`;
 }
 
+// Item-amount-matrix invoice layout: Srl No | Date | Run Sheet | <Count +
+// Amount columns per distinct item> | Total, one row per (date, run sheet).
+// Amount = count x that item's current Item Catalog price (via
+// catalogPriceMap), not the price recorded on the invoice line — falls back
+// to the row's own recorded rate only if the item isn't found in the
+// catalog (defense-in-depth; item entry is expected to be catalog-only for
+// delivery-type items). A final row sums each item's count and amount
+// columns plus the grand total. Rendered landscape, same as item-matrix.
+// Used when invoice.itemAmountMatrix is set; all other layouts untouched.
+function buildItemAmountMatrixInvoiceHtml(invoice, client, items, settings = {}, catalogPriceMap = null) {
+  const sym = settings.currencySymbol || 'S$';
+  const cur = settings.currency || 'SGD';
+  const termsDays = settings.paymentTermsDays || 30;
+  const addrLines = (settings.address || '').split('\n').filter(Boolean).map(l => `<div>${l}</div>`).join('');
+
+  // Normalise both invoice flavours: from-deliveries items carry fromDate +
+  // rate; manually entered delivery items carry deliveryDate + unitPrice.
+  const normalized = items.map(i => ({
+    date: i.fromDate || i.deliveryDate || '',
+    runSheetNo: i.runSheetNo || '',
+    name: (i.jobDescription || '').trim(),
+    rate: parseFloat((i.rate ?? i.unitPrice) || 0),
+    quantity: parseFloat(i.quantity || 0),
+  }));
+
+  // Columns: every distinct item name, alphabetical — stable regardless of
+  // delivery order
+  const itemNames = [...new Set(normalized.map(i => i.name))].sort((a, b) => a.localeCompare(b));
+
+  // Price per item: catalog price when available, else that item's own
+  // first-seen recorded rate as a fallback
+  const priceFor = (name) => {
+    const catalogPrice = catalogPriceMap?.get(name.toLowerCase());
+    if (catalogPrice !== undefined) return catalogPrice;
+    const fallback = normalized.find(i => i.name === name);
+    return fallback ? fallback.rate : 0;
+  };
+  const itemPrices = new Map(itemNames.map(name => [name, priceFor(name)]));
+
+  // Rows: one per (date, run sheet), in date → run sheet order
+  const rowMap = new Map();
+  for (const i of normalized) {
+    const key = `${i.date}|${i.runSheetNo}`;
+    let row = rowMap.get(key);
+    if (!row) {
+      row = { date: i.date, runSheetNo: i.runSheetNo, counts: {} };
+      rowMap.set(key, row);
+    }
+    row.counts[i.name] = (row.counts[i.name] || 0) + i.quantity;
+  }
+  const rows = [...rowMap.values()].sort((a, b) =>
+    (a.date || '').localeCompare(b.date || '')
+    || (a.runSheetNo || '').localeCompare(b.runSheetNo || '', undefined, { numeric: true }));
+
+  const fmtQty = (q) => (q ? parseFloat(q).toFixed(3).replace(/\.?0+$/, '') : '—');
+  const rowAmount = (row) => itemNames.reduce((s, name) => s + (row.counts[name] || 0) * itemPrices.get(name), 0);
+
+  const rowsHtml = rows.map((row, idx) => `
+    <tr>
+      <td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;color:#6b7280;">${idx + 1}</td>
+      <td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;">${formatDate(row.date)}</td>
+      <td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;color:#4b5563;">${row.runSheetNo || '—'}</td>
+      ${itemNames.map(name => {
+        const count = row.counts[name] || 0;
+        return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;">${fmtQty(count)}</td>
+      <td style="border:1px solid #e5e7eb;padding:8px;text-align:right;font-size:11px;">${count ? formatCurrency(count * itemPrices.get(name), sym) : '—'}</td>`;
+      }).join('')}
+      <td style="border:1px solid #e5e7eb;padding:8px;text-align:right;font-weight:bold;font-size:11px;">${formatCurrency(rowAmount(row), sym)}</td>
+    </tr>`).join('');
+
+  // Billing period length, for the "TOTAL FOR N DAYS" row label
+  let periodDays;
+  if (invoice.periodStart && invoice.periodEnd) {
+    periodDays = Math.round((new Date(invoice.periodEnd) - new Date(invoice.periodStart)) / 86400000) + 1;
+  } else {
+    const dates = [...new Set(rows.map(r => r.date).filter(Boolean))];
+    periodDays = dates.length || 1;
+  }
+
+  // Grand total = sum of every row's catalog-priced amount — internally
+  // consistent with what the table displays. Amount Paid / Balance Due
+  // below stays keyed off invoice.totalAmount, the authoritative billed
+  // figure, regardless of this report's own breakdown.
+  const grandTotal = rows.reduce((s, r) => s + rowAmount(r), 0);
+  const total = items.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0);
+  const paid = (invoice.payments || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+  const balance = Math.max(0, total - paid);
+  const colspanLabel = 3; // NO + DATE + RUN SHEET
+
+  const totalRow = `
+    <tr style="background:#f3f4f6;">
+      <td colspan="${colspanLabel}" style="border:1px solid #e5e7eb;padding:8px;text-align:right;font-size:11px;font-weight:bold;color:#374151;">TOTAL FOR ${periodDays} DAY${periodDays === 1 ? '' : 'S'}</td>
+      ${itemNames.map(name => {
+        const colCount = rows.reduce((s, r) => s + (r.counts[name] || 0), 0);
+        const colAmount = colCount * itemPrices.get(name);
+        return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;font-weight:bold;color:#374151;">${fmtQty(colCount)}</td>
+      <td style="border:1px solid #e5e7eb;padding:8px;text-align:right;font-size:11px;font-weight:bold;color:#374151;">${formatCurrency(colAmount, sym)}</td>`;
+      }).join('')}
+      <td style="border:1px solid #e5e7eb;padding:8px;text-align:right;font-size:11px;font-weight:bold;color:#374151;">${formatCurrency(grandTotal, sym)}</td>
+    </tr>`;
+  const trailerColspan = colspanLabel + itemNames.length * 2;
+  const trailerRows = `
+    ${paid > 0 ? `<tr>
+      <td colspan="${trailerColspan}" style="border:1px solid #e5e7eb;padding:9px;text-align:right;color:#16a34a;font-size:11px;">Amount Paid</td>
+      <td style="border:1px solid #e5e7eb;padding:9px;text-align:right;color:#16a34a;font-size:11px;">(${formatCurrency(paid, sym)})</td>
+    </tr>` : ''}
+    <tr style="background:#111827;color:#fff;">
+      <td colspan="${trailerColspan}" style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;letter-spacing:1px;">${balance === 0 ? 'PAID IN FULL' : `BALANCE DUE (${cur})`}</td>
+      <td style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(balance, sym)}</td>
+    </tr>`;
+
+  const period = invoice.periodStart && invoice.periodEnd
+    ? `${formatDate(invoice.periodStart)} – ${formatDate(invoice.periodEnd)}`
+    : '';
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
+
+  ${testWatermarkHtml(invoice.isTest)}
+
+  <!-- Letterhead -->
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;">
+    <div>
+      <div style="font-size:16px;font-weight:bold;color:#111827;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">${settings.companyName || 'My Company'}</div>
+      ${settings.registrationNo ? `<div style="font-size:10.5px;color:#6b7280;margin-bottom:2px;">${settings.registrationNo}</div>` : ''}
+      <div style="font-size:11px;color:#4b5563;line-height:1.7;margin-top:4px;">${addrLines}</div>
+      <div style="font-size:11px;color:#4b5563;margin-top:2px;">
+        ${settings.phone ? `Tel: ${settings.phone}` : ''}
+        ${settings.phone && settings.email ? ' &nbsp;|&nbsp; ' : ''}
+        ${settings.email ? `<a href="mailto:${settings.email}">${settings.email}</a>` : ''}
+      </div>
+    </div>
+    <div>${getLogoHtml(settings)}</div>
+  </div>
+
+  <!-- Title bar -->
+  <div style="border-top:2.5px solid #111827;border-bottom:1px solid #e5e7eb;padding:12px 0;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;">
+    <div>
+      <div style="font-size:22px;font-weight:bold;color:#111827;letter-spacing:4px;">INVOICE</div>
+      ${period ? `<div style="font-size:11px;color:#6b7280;margin-top:3px;">Delivery Period: <strong>${period}</strong></div>` : ''}
+    </div>
+    <div style="font-size:11px;text-align:right;line-height:1.9;">
+      <div><span style="color:#6b7280;">Invoice No: </span><strong>${invoice.invoiceNo}</strong></div>
+      <div><span style="color:#6b7280;">Date: </span>${formatDate(invoice.date)}</div>
+      ${invoice.dueDate ? `<div><span style="color:#6b7280;">Due Date: </span><strong>${formatDate(invoice.dueDate)}</strong></div>` : ''}
+    </div>
+  </div>
+
+  <!-- Bill To -->
+  <div style="margin-bottom:20px;">
+    <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px;">Bill To</div>
+    <div style="font-weight:bold;font-size:13px;">${client.companyName}</div>
+    ${client.contactPerson ? `<div>Attn: ${client.contactPerson}</div>` : ''}
+    ${client.address ? `<div style="font-size:11px;color:#6b7280;">${client.address}</div>` : ''}
+  </div>
+
+  <!-- Item Amount Matrix Table -->
+  <table style="margin-bottom:24px;">
+    <thead>
+      <tr>
+        <th rowspan="2" style="width:5%;text-align:center;">NO</th>
+        <th rowspan="2" style="width:9%;text-align:center;">DATE</th>
+        <th rowspan="2" style="width:10%;text-align:center;">RUN SHEET</th>
+        ${itemNames.map(name => `<th colspan="2" style="text-align:center;">${name.toUpperCase()}<div style="font-size:9px;font-weight:normal;color:#cbd5e1;margin-top:2px;letter-spacing:normal;">${formatCurrency(itemPrices.get(name), sym)} / unit</div></th>`).join('')}
+        <th rowspan="2" style="width:11%;text-align:right;">TOTAL (${cur})</th>
+      </tr>
+      <tr>
+        ${itemNames.map(() => `<th style="text-align:center;font-size:9.5px;">COUNT</th><th style="text-align:center;font-size:9.5px;">AMOUNT</th>`).join('')}
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}${totalRow}${trailerRows}</tbody>
+  </table>
+
+  ${invoice.notes ? `
+  <div style="margin-bottom:20px;padding:10px 14px;background:#fffbeb;border-left:3px solid #f59e0b;font-size:11.5px;">
+    <strong>Note:</strong> ${invoice.notes}
+  </div>` : ''}
+
+  <!-- Payment Details + Signature -->
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:32px;gap:32px;">
+    ${(settings.bankName || settings.bankAccountNo) ? `
+    <div style="font-size:11px;line-height:1.9;">
+      <div style="font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#374151;margin-bottom:6px;font-size:10.5px;">Payment Details</div>
+      ${settings.bankAccountName ? `<div><span style="color:#6b7280;">Account Name: </span><strong>${settings.bankAccountName}</strong></div>` : ''}
+      ${settings.bankName ? `<div><span style="color:#6b7280;">Bank: </span><strong>${settings.bankName}</strong></div>` : ''}
+      ${settings.bankAccountNo ? `<div><span style="color:#6b7280;">Account No: </span><strong>${settings.bankAccountNo}</strong></div>` : ''}
+      <div style="font-size:10.5px;color:#6b7280;margin-top:6px;font-style:italic;">
+        Payment due within ${termsDays} days of invoice date.<br/>
+        Please quote invoice number when making payment.
+      </div>
+    </div>` : `<div></div>`}
+    <div style="text-align:center;min-width:180px;">
+      ${getSignatureHtml(settings)}
+      ${getStampHtml(settings)}
+      <div style="width:180px;border-bottom:1px solid #6b7280;margin:0 auto 6px;"></div>
+      <div style="font-weight:bold;font-size:12px;">${settings.signatoryName || 'Authorised Signatory'}</div>
+      <div style="font-size:10.5px;color:#6b7280;">Authorised Signatory</div>
+    </div>
+  </div>
+
+</body></html>`;
+}
+
 async function generatePDF(html, filename, options = {}) {
   ensureDir(UPLOADS_DIR);
   const outputPath = path.join(UPLOADS_DIR, filename);
@@ -917,16 +1119,18 @@ async function generatePDFBuffer(html) {
   return buffer;
 }
 
-async function generateInvoicePDF(invoice, client, items, settings) {
-  const html = invoice.itemMatrix
-    ? buildItemMatrixInvoiceHtml(invoice, client, items, settings)
-    : invoice.bulkRunSheet
-      ? buildBulkRunSheetInvoiceHtml(invoice, client, items, settings)
-      : invoice.invoiceType === 'delivery'
-        ? buildDeliveryInvoiceHtml(invoice, client, items, settings)
-        : buildInvoiceHtml(invoice, client, items, settings);
+async function generateInvoicePDF(invoice, client, items, settings, catalogPriceMap = null) {
+  const html = invoice.itemAmountMatrix
+    ? buildItemAmountMatrixInvoiceHtml(invoice, client, items, settings, catalogPriceMap)
+    : invoice.itemMatrix
+      ? buildItemMatrixInvoiceHtml(invoice, client, items, settings)
+      : invoice.bulkRunSheet
+        ? buildBulkRunSheetInvoiceHtml(invoice, client, items, settings)
+        : invoice.invoiceType === 'delivery'
+          ? buildDeliveryInvoiceHtml(invoice, client, items, settings)
+          : buildInvoiceHtml(invoice, client, items, settings);
   const filename = `Invoice-${invoice.invoiceNo.replace(/\//g, '-')}-${Date.now()}.pdf`;
-  return generatePDF(html, filename, { landscape: !!invoice.itemMatrix });
+  return generatePDF(html, filename, { landscape: !!(invoice.itemAmountMatrix || invoice.itemMatrix) });
 }
 
 async function generateQuotationPDF(quotation, client, items, settings) {

@@ -81,14 +81,26 @@ function clearCatalog(item) {
   item.unitPrice = '';
 }
 
+// Catalog-only: typing filters suggestions but never commits as the item
+// name — only picking a suggestion (selectCatalog) does that. Mirrors the
+// same restriction on DeliveryForm.vue; every item entered here is a
+// delivery-type item, so the whole editor is in scope (no service-item split).
+// jobDescription is only ever written by selectCatalog(); typing only moves
+// _search, so an existing (possibly legacy, possibly non-catalog) committed
+// value is never touched just by focusing and blurring a row.
 function onItemInput(item, val) {
   item._search = val;
-  item.jobDescription = val;
   item._catalogId = '';
 }
 
-function onItemBlur() {
-  setTimeout(() => { openCatalogKey.value = null; }, 160);
+function onItemBlur(item) {
+  setTimeout(() => {
+    openCatalogKey.value = null;
+    // Revert the visible text to the last confirmed value only if the user
+    // actually typed something different and didn't pick a suggestion —
+    // never touches jobDescription itself
+    if (item && item._search !== item.jobDescription) item._search = item.jobDescription || '';
+  }, 160);
 }
 </script>
 
@@ -143,7 +155,7 @@ function onItemBlur() {
                     :value="item._search"
                     @input="onItemInput(item, $event.target.value)"
                     @focus="openCatalog({ rsIdx, itemIdx }, $event)"
-                    @blur="onItemBlur"
+                    @blur="onItemBlur(item)"
                     type="text" placeholder="Item name…" autocomplete="off"
                     :class="['w-full text-sm rounded-lg border px-3 py-2 pr-7 focus:outline-none focus:ring-2 transition-colors',
                       item._catalogId
@@ -221,7 +233,7 @@ function onItemBlur() {
       :style="{ top: dropdownPos.top + 'px', left: dropdownPos.left + 'px', minWidth: dropdownPos.minWidth + 'px' }">
       <div v-if="!filteredCatalog(openItem).length"
         class="px-4 py-3 text-sm text-gray-400 dark:text-slate-500 italic">
-        No catalog match — type to save as custom
+        No matching item found
       </div>
       <button
         v-for="cat in filteredCatalog(openItem)" :key="cat.id"

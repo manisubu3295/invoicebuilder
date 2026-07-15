@@ -20,9 +20,20 @@ const dropdownStyle = ref({});
 // Per-row date input state (not persisted in item, just for the add-date input)
 const dateInputs = ref({});
 
-function catalogSuggestions(row) {
+// Delivery-type rows are catalog-only — typing filters suggestions but never
+// commits as the item name, only picking a suggestion does (selectCatalogItem).
+// Service-type rows are untouched: free text, exactly as before. This local
+// buffer holds what's being typed before a delivery row's pick is confirmed.
+const descSearch = ref({});
+
+function displayDesc(i, item) {
+  if (item.itemType !== 'delivery') return item.jobDescription;
+  return item.jobDescription || (descSearch.value[i] ?? '');
+}
+
+function catalogSuggestions(row, i) {
   if (!props.catalog.length) return [];
-  const q = (row.jobDescription || '').toLowerCase().trim();
+  const q = (displayDesc(i, row) || '').toLowerCase().trim();
   if (!q) return props.catalog.slice(0, 10);
   return props.catalog.filter(c => c.name.toLowerCase().includes(q)).slice(0, 10);
 }
@@ -40,12 +51,24 @@ function onDescFocus(i, event) {
 }
 
 function onDescInput(i, value) {
-  updateItem(i, 'jobDescription', value);
+  const item = items.value[i];
+  if (item.itemType === 'delivery') {
+    descSearch.value[i] = value;
+    if (item.jobDescription) updateItem(i, 'jobDescription', '');
+  } else {
+    updateItem(i, 'jobDescription', value);
+  }
   openIdx.value = i;
 }
 
 function onDescBlur(i) {
-  setTimeout(() => { if (openIdx.value === i) openIdx.value = -1; }, 200);
+  setTimeout(() => {
+    if (openIdx.value === i) openIdx.value = -1;
+    // No catalog match was picked — discard the typed search text so it
+    // can't be mistaken for a saved item
+    const item = items.value[i];
+    if (item && item.itemType === 'delivery' && !item.jobDescription) descSearch.value[i] = '';
+  }, 200);
 }
 
 function selectCatalogItem(rowIdx, catItem) {
@@ -54,6 +77,7 @@ function selectCatalogItem(rowIdx, catItem) {
   row.jobDescription = catItem.name;
   if (row.itemType === 'delivery') {
     row.unitPrice = catItem.unitPrice || '';
+    descSearch.value[rowIdx] = catItem.name;
   } else {
     if (catItem.unitPrice) row.rate = catItem.unitPrice;
   }
@@ -166,12 +190,12 @@ const inputCls = 'w-full bg-transparent focus:outline-none focus:ring-1 focus:ri
             <!-- Description — catalog autocomplete via Teleport -->
             <td class="px-2 py-2 border-r border-gray-100" :colspan="item.itemType === 'delivery' ? 3 : 1">
               <input
-                :value="item.jobDescription"
+                :value="displayDesc(i, item)"
                 @input="onDescInput(i, $event.target.value)"
                 @focus="onDescFocus(i, $event)"
                 @blur="onDescBlur(i)"
                 :class="inputCls"
-                placeholder="Search catalog or type custom…"
+                :placeholder="item.itemType === 'delivery' ? 'Search catalog item…' : 'Search catalog or type custom…'"
                 autocomplete="off"
               />
               <input
@@ -285,7 +309,7 @@ const inputCls = 'w-full bg-transparent focus:outline-none focus:ring-1 focus:ri
 
   <!-- Catalog dropdown rendered in body to escape overflow:hidden/auto containers -->
   <Teleport to="body">
-    <div v-if="openIdx >= 0 && catalogSuggestions(items[openIdx]).length"
+    <div v-if="openIdx >= 0 && catalogSuggestions(items[openIdx], openIdx).length"
       :style="dropdownStyle"
       class="bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
       <div class="px-3 py-1.5 text-[10px] uppercase tracking-wider text-gray-400 bg-gray-50 border-b border-gray-100 flex items-center gap-1">
@@ -293,7 +317,7 @@ const inputCls = 'w-full bg-transparent focus:outline-none focus:ring-1 focus:ri
         Item Catalog
       </div>
       <ul class="max-h-48 overflow-y-auto">
-        <li v-for="cat in catalogSuggestions(items[openIdx])" :key="cat.id"
+        <li v-for="cat in catalogSuggestions(items[openIdx], openIdx)" :key="cat.id"
           @mousedown.prevent="selectCatalogItem(openIdx, cat)"
           class="flex items-center justify-between px-3 py-2.5 hover:bg-blue-50 cursor-pointer gap-3 border-b border-gray-50 last:border-0">
           <span class="text-sm text-gray-800 font-medium truncate">{{ cat.name }}</span>

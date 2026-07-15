@@ -1,17 +1,26 @@
 const router = require('express').Router();
 const fs = require('fs');
 const { Op } = require('sequelize');
-const { Invoice, InvoiceItem, Client, Payment, CompanySettings, DeliveryLog, Job, Driver, Vehicle, User, Quotation, Category } = require('../models');
+const { Invoice, InvoiceItem, Client, Payment, CompanySettings, DeliveryLog, Job, Driver, Vehicle, User, Quotation, Category, ItemCatalog } = require('../models');
 const auth = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 const { createInvoiceWithNumber, generateInvoiceNumber } = require('../services/invoiceNumber');
 const { generateInvoicePDF } = require('../services/pdfService');
 const { sendInvoiceEmail } = require('../services/emailService');
 const { isTestModeEnabled } = require('../services/testMode');
+const { findInvalidCatalogItem } = require('../services/catalogValidation');
 
 router.use(auth);
 
 const num = (v) => (v === '' || v === null || v === undefined) ? null : parseFloat(v);
+
+// Item Amount Matrix format needs each item's current catalog price — only
+// fetched when actually needed (invoice.itemAmountMatrix), not on every PDF/
+// email request.
+async function buildCatalogPriceMap() {
+  const cat = await ItemCatalog.findAll({ attributes: ['name', 'unitPrice'] });
+  return new Map(cat.map(c => [c.name.trim().toLowerCase(), parseFloat(c.unitPrice)]));
+}
 
 router.get('/', async (req, res) => {
   try {
@@ -91,6 +100,9 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
     }
     if (!categoryId) return res.status(400).json({ message: 'Category is required' });
 
+    const catalogErr = await findInvalidCatalogItem(items, { nameField: 'jobDescription', deliveryOnly: true });
+    if (catalogErr) return res.status(400).json({ message: catalogErr });
+
     let quotation = null;
     if (quotationId) {
       quotation = await Quotation.findOne({ where: { id: quotationId, isTest: isTestModeEnabled() } });
@@ -104,6 +116,7 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       date, dueDate: dueDate || null, notes, quotationId: quotationId || null, jobId, totalAmount, status: 'draft', categoryId,
       bulkRunSheet: !!req.body.bulkRunSheet,
       itemMatrix: !!req.body.itemMatrix,
+      itemAmountMatrix: !!req.body.itemAmountMatrix,
     });
 
     const invoiceItems = items.map((item, idx) => {
@@ -147,7 +160,12 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
     });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
 
-    const { date, dueDate, notes, items, status, bulkRunSheet, itemMatrix } = req.body;
+    const { date, dueDate, notes, items, status, bulkRunSheet, itemMatrix, itemAmountMatrix } = req.body;
+
+    if (items) {
+      const catalogErr = await findInvalidCatalogItem(items, { nameField: 'jobDescription', deliveryOnly: true });
+      if (catalogErr) return res.status(400).json({ message: catalogErr });
+    }
 
     // Only touch fields actually present in the request — this route also
     // serves narrow updates like toggling bulkRunSheet/itemMatrix alone, and
@@ -162,6 +180,7 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
     if (status !== undefined) fields.status = status;
     if (bulkRunSheet !== undefined) fields.bulkRunSheet = !!bulkRunSheet;
     if (itemMatrix !== undefined) fields.itemMatrix = !!itemMatrix;
+    if (itemAmountMatrix !== undefined) fields.itemAmountMatrix = !!itemAmountMatrix;
 
     if (items) {
       await InvoiceItem.destroy({ where: { invoiceId: invoice.id } });
@@ -208,7 +227,8 @@ router.get('/:id/pdf', async (req, res) => {
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
 
     const settings = await CompanySettings.findOne() || {};
-    const pdfPath = await generateInvoicePDF(invoice, invoice.client, invoice.items, settings);
+    const catalogPriceMap = invoice.itemAmountMatrix ? await buildCatalogPriceMap() : null;
+    const pdfPath = await generateInvoicePDF(invoice, invoice.client, invoice.items, settings, catalogPriceMap);
     await invoice.update({ pdfPath });
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -229,7 +249,8 @@ router.post('/:id/send-email', rbac('admin', 'staff'), async (req, res) => {
     if (!invoice.client.email) return res.status(400).json({ message: 'Client has no email address' });
 
     const settings = await CompanySettings.findOne() || {};
-    const pdfPath = await generateInvoicePDF(invoice, invoice.client, invoice.items, settings);
+    const catalogPriceMap = invoice.itemAmountMatrix ? await buildCatalogPriceMap() : null;
+    const pdfPath = await generateInvoicePDF(invoice, invoice.client, invoice.items, settings, catalogPriceMap);
     await invoice.update({ pdfPath });
 
     await sendInvoiceEmail({
@@ -265,6 +286,7 @@ router.post('/from-deliveries', rbac('admin', 'staff'), async (req, res) => {
       periodStart, periodEnd, categoryId,
       bulkRunSheet: !!req.body.bulkRunSheet,
       itemMatrix: !!req.body.itemMatrix,
+      itemAmountMatrix: !!req.body.itemAmountMatrix,
     });
 
     const invoiceItems = rows.map((row, idx) => ({

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { invoicesApi } from '../../api/index.js';
+import { invoicesApi, itemCatalogApi } from '../../api/index.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { useAuthStore } from '../../stores/auth.js';
 import StatusBadge from '../../components/shared/StatusBadge.vue';
@@ -153,22 +153,34 @@ async function deleteInvoice() {
 
 async function reload() { invoice.value = (await invoicesApi.get(route.params.id)).data; }
 
+// Item-amount-matrix needs each item's current catalog price — fetched once
+// on mount, mirrors the same lookup the backend does when generating the PDF.
+const catalogPriceMap = ref(new Map());
+async function loadCatalogPriceMap() {
+  try {
+    const { data } = await itemCatalogApi.list();
+    catalogPriceMap.value = new Map(data.map(c => [c.name.trim().toLowerCase(), parseFloat(c.unitPrice)]));
+  } catch { catalogPriceMap.value = new Map(); }
+}
+
 const hasRunSheet = computed(() => !!invoice.value?.items?.some(i => i.runSheetNo));
 
 // PDF format can be flipped on an already-created invoice — the checkboxes
 // on the create screens only set the initial value, so this is the only way
-// to change it afterwards. The two formats are mutually exclusive: picking
-// one clears the other in the same request.
+// to change it afterwards. The formats are mutually exclusive: picking one
+// clears the other two in the same request.
 const bulkToggleLoading = ref(false);
 async function setInvoiceFormat(format) {
   bulkToggleLoading.value = true;
   try {
     const bulkRunSheet = format === 'bulk';
     const itemMatrix = format === 'matrix';
-    await invoicesApi.update(invoice.value.id, { bulkRunSheet, itemMatrix });
+    const itemAmountMatrix = format === 'amount-matrix';
+    await invoicesApi.update(invoice.value.id, { bulkRunSheet, itemMatrix, itemAmountMatrix });
     await reload();
     showToast(format === 'standard' ? 'Switched to standard format'
-      : format === 'bulk' ? 'Switched to bulk run-sheet format' : 'Switched to item matrix format');
+      : format === 'bulk' ? 'Switched to bulk run-sheet format'
+      : format === 'matrix' ? 'Switched to item matrix format' : 'Switched to item matrix (with amounts) format');
   } catch (e) { showToast('Error: ' + (e.response?.data?.message || 'Failed to update format')); }
   finally { bulkToggleLoading.value = false; }
 }
@@ -256,6 +268,60 @@ const matrixData = computed(() => {
   return { itemNames, rows, periodDays, colTotals, grandTotal };
 });
 
+// Item-amount-matrix layout (invoice.itemAmountMatrix): No / Date / Run
+// Sheet / <Count + Amount column per item, Amount = count x current catalog
+// price> / Total, one row per (date, run sheet), with a period totals row —
+// mirrors the PDF (buildItemAmountMatrixInvoiceHtml). Falls back to the
+// item's own recorded rate when it's not found in the catalog map (same
+// defense-in-depth rule as the backend).
+const isAmountMatrix = computed(() => !!invoice.value?.itemAmountMatrix);
+const amountMatrixData = computed(() => {
+  if (!isAmountMatrix.value) return { itemNames: [], rows: [], periodDays: 0, itemPrices: new Map(), colCountTotals: {}, colAmountTotals: {}, grandTotal: 0 };
+  const normalized = (invoice.value?.items || []).map(i => ({
+    date: i.fromDate || i.deliveryDate || '',
+    rs: i.runSheetNo || '',
+    name: (i.jobDescription || '').trim(),
+    rate: parseFloat((i.rate ?? i.unitPrice) || 0),
+    qty: parseFloat(i.quantity || 0),
+  }));
+  const itemNames = [...new Set(normalized.map(i => i.name))].sort((a, b) => a.localeCompare(b));
+
+  const itemPrices = new Map(itemNames.map(name => {
+    const catalogPrice = catalogPriceMap.value.get(name.toLowerCase());
+    if (catalogPrice !== undefined) return [name, catalogPrice];
+    const fallback = normalized.find(i => i.name === name);
+    return [name, fallback ? fallback.rate : 0];
+  }));
+
+  const rowMap = new Map();
+  for (const i of normalized) {
+    const key = `${i.date}|${i.rs}`;
+    let row = rowMap.get(key);
+    if (!row) { row = { date: i.date, rs: i.rs, counts: {} }; rowMap.set(key, row); }
+    row.counts[i.name] = (row.counts[i.name] || 0) + i.qty;
+  }
+  const rowAmount = (row) => itemNames.reduce((s, name) => s + (row.counts[name] || 0) * itemPrices.get(name), 0);
+  const rows = [...rowMap.values()].sort((a, b) =>
+    (a.date || '').localeCompare(b.date || '') || (a.rs || '').localeCompare(b.rs || '', undefined, { numeric: true }));
+
+  const inv = invoice.value;
+  let periodDays;
+  if (inv.periodStart && inv.periodEnd) {
+    periodDays = Math.round((new Date(inv.periodEnd) - new Date(inv.periodStart)) / 86400000) + 1;
+  } else {
+    periodDays = [...new Set(rows.map(r => r.date).filter(Boolean))].length || 1;
+  }
+  const colCountTotals = {};
+  const colAmountTotals = {};
+  for (const name of itemNames) {
+    colCountTotals[name] = rows.reduce((s, r) => s + (r.counts[name] || 0), 0);
+    colAmountTotals[name] = colCountTotals[name] * itemPrices.get(name);
+  }
+  const grandTotal = rows.reduce((s, r) => s + rowAmount(r), 0);
+
+  return { itemNames, rows, periodDays, itemPrices, colCountTotals, colAmountTotals, grandTotal, rowAmount };
+});
+
 const daysUntilDue = computed(() => {
   if (!invoice.value?.dueDate) return null;
   return Math.ceil((new Date(invoice.value.dueDate) - new Date()) / (1000 * 60 * 60 * 24));
@@ -272,6 +338,7 @@ const outstandingAlert = computed(() => {
 
 onMounted(async () => {
   await settingsStore.fetchSettings();
+  loadCatalogPriceMap(); // not blocking — falls back gracefully if slow/unavailable
   try { await reload(); } finally { loading.value = false; }
 });
 </script>
@@ -420,18 +487,64 @@ onMounted(async () => {
              the standard, bulk, and matrix layouts without recreating it -->
         <div v-if="hasRunSheet && authStore.isAdmin" class="print:hidden flex items-center gap-3 mb-3 text-xs text-gray-500">
           <span>Invoice format:</span>
-          <select :value="isMatrix ? 'matrix' : isBulk ? 'bulk' : 'standard'"
+          <select :value="isAmountMatrix ? 'amount-matrix' : isMatrix ? 'matrix' : isBulk ? 'bulk' : 'standard'"
             @change="setInvoiceFormat($event.target.value)" :disabled="bulkToggleLoading"
             class="border border-gray-200 rounded px-2 py-1 text-xs">
             <option value="standard">Standard</option>
             <option value="bulk">Bulk run-sheet</option>
             <option value="matrix">Item matrix</option>
+            <option value="amount-matrix">Item matrix (with amounts)</option>
           </select>
           <span v-if="bulkToggleLoading" class="text-gray-400">saving…</span>
         </div>
 
+        <!-- Line Items — item amount matrix layout (mirrors the PDF) -->
+        <table v-if="isAmountMatrix" class="w-full border-collapse mb-4 text-[11.5px]">
+          <thead>
+            <tr class="bg-slate-800 text-white text-xs uppercase tracking-wide">
+              <th rowspan="2" class="px-3 py-2.5 text-center w-8 border border-slate-700 align-middle">#</th>
+              <th rowspan="2" class="px-3 py-2.5 text-center w-24 border border-slate-700 align-middle">Date</th>
+              <th rowspan="2" class="px-3 py-2.5 text-center w-24 border border-slate-700 align-middle">Run Sheet</th>
+              <template v-for="name in amountMatrixData.itemNames" :key="name">
+                <th colspan="2" class="px-3 py-1.5 text-center border border-slate-700">
+                  <div>{{ name }}</div>
+                  <div class="text-[9px] font-normal normal-case text-slate-300 mt-0.5">{{ fmt(amountMatrixData.itemPrices.get(name)) }} / unit</div>
+                </th>
+              </template>
+              <th rowspan="2" class="px-3 py-2.5 text-right w-24 border border-slate-700 align-middle">Total</th>
+            </tr>
+            <tr class="bg-slate-800 text-white text-[10px] uppercase tracking-wide">
+              <template v-for="name in amountMatrixData.itemNames" :key="name + '-sub'">
+                <th class="px-2 py-1.5 text-center border border-slate-700 font-normal">Count</th>
+                <th class="px-2 py-1.5 text-center border border-slate-700 font-normal">Amount</th>
+              </template>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="!amountMatrixData.rows.length"><td :colspan="4 + amountMatrixData.itemNames.length * 2" class="px-3 py-8 text-center text-gray-400 border border-gray-200">No items</td></tr>
+            <tr v-for="(row, ri) in amountMatrixData.rows" :key="ri" class="border-b border-gray-200 hover:bg-gray-50">
+              <td class="px-3 py-3 text-center text-gray-400 border border-gray-200">{{ ri + 1 }}</td>
+              <td class="px-3 py-3 text-center text-gray-600 text-xs border border-gray-200">{{ fmtDate(row.date) }}</td>
+              <td class="px-3 py-3 text-center text-gray-600 text-xs border border-gray-200">{{ row.rs || '—' }}</td>
+              <template v-for="name in amountMatrixData.itemNames" :key="name">
+                <td class="px-2 py-3 text-center text-slate-700 border border-gray-200">{{ row.counts[name] ? formatQty(row.counts[name]) : '—' }}</td>
+                <td class="px-2 py-3 text-right text-slate-700 border border-gray-200">{{ row.counts[name] ? fmt(row.counts[name] * amountMatrixData.itemPrices.get(name)) : '—' }}</td>
+              </template>
+              <td class="px-3 py-3 text-right font-bold text-slate-800 border border-gray-200">{{ fmt(amountMatrixData.rowAmount(row)) }}</td>
+            </tr>
+            <tr v-if="amountMatrixData.rows.length" class="bg-gray-100">
+              <td colspan="3" class="px-3 py-2 text-right text-xs font-bold text-slate-700 border border-gray-200">Total for {{ amountMatrixData.periodDays }} day{{ amountMatrixData.periodDays === 1 ? '' : 's' }}</td>
+              <template v-for="name in amountMatrixData.itemNames" :key="name">
+                <td class="px-2 py-2 text-center text-xs font-bold text-slate-700 border border-gray-200">{{ formatQty(amountMatrixData.colCountTotals[name]) }}</td>
+                <td class="px-2 py-2 text-right text-xs font-bold text-slate-700 border border-gray-200">{{ fmt(amountMatrixData.colAmountTotals[name]) }}</td>
+              </template>
+              <td class="px-3 py-2 text-right text-xs font-bold text-slate-700 border border-gray-200">{{ fmt(amountMatrixData.grandTotal) }}</td>
+            </tr>
+          </tbody>
+        </table>
+
         <!-- Line Items — item matrix layout (mirrors the PDF) -->
-        <table v-if="isMatrix" class="w-full border-collapse mb-4 text-[12.5px]">
+        <table v-else-if="isMatrix" class="w-full border-collapse mb-4 text-[12.5px]">
           <thead>
             <tr class="bg-slate-800 text-white text-xs uppercase tracking-wide">
               <th class="px-3 py-2.5 text-center w-8 border border-slate-700">#</th>

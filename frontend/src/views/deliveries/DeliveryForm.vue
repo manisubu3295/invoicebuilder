@@ -136,14 +136,28 @@ function clearCatalog(item) {
   item.unitPrice = '';
 }
 
+// Drivers may only log catalog items — typing filters the dropdown (so they
+// can still search) but never commits free text as the item name; only
+// picking a suggestion via selectCatalog() does that. Admin/staff keep the
+// original type-anything behaviour.
+const isDriver = computed(() => auth.user?.role === 'driver');
+
 function onItemInput(item, val) {
   item._search = val;
-  item.itemName = val;
   item._catalogId = '';
+  if (!isDriver.value) item.itemName = val;
 }
 
-function onItemBlur() {
-  setTimeout(() => { openCatalogKey.value = null; }, 160);
+function onItemBlur(item) {
+  setTimeout(() => {
+    openCatalogKey.value = null;
+    // Revert the visible text to the last confirmed value only if the
+    // driver actually typed something different and didn't pick a
+    // suggestion — never touches itemName itself, so an existing (possibly
+    // legacy, possibly non-catalog) item is never wiped by a bare
+    // focus+blur with no edits
+    if (isDriver.value && item && item._search !== item.itemName) item._search = item.itemName || '';
+  }, 160);
 }
 
 function addItem() { form.value.items.push(blankItem()); }
@@ -425,7 +439,7 @@ async function save() {
                       :value="item._search"
                       @input="onItemInput(item, $event.target.value)"
                       @focus="openCatalog(item, { flat: idx }, $event)"
-                      @blur="onItemBlur"
+                      @blur="onItemBlur(item)"
                       type="text" placeholder="Item name…" autocomplete="off"
                       :class="['w-full text-sm rounded-lg border px-3 py-2 pr-7 focus:outline-none focus:ring-2 transition-colors',
                         item._catalogId
@@ -520,7 +534,7 @@ async function save() {
                         :value="item._search"
                         @input="onItemInput(item, $event.target.value)"
                         @focus="openCatalog(item, { rsIdx, itemIdx }, $event)"
-                        @blur="onItemBlur"
+                        @blur="onItemBlur(item)"
                         type="text" placeholder="Item name…" autocomplete="off"
                         :class="['w-full text-sm rounded-lg border px-3 py-2 pr-7 focus:outline-none focus:ring-2 transition-colors',
                           item._catalogId
@@ -621,7 +635,7 @@ async function save() {
         :style="{ top: dropdownPos.top + 'px', left: dropdownPos.left + 'px', minWidth: dropdownPos.minWidth + 'px' }">
         <div v-if="!filteredCatalog(openItem).length"
           class="px-4 py-3 text-sm text-gray-400 dark:text-slate-500 italic">
-          No catalog match — type to save as custom
+          {{ isDriver ? 'No matching item found' : 'No catalog match — type to save as custom' }}
         </div>
         <button
           v-for="cat in filteredCatalog(openItem)" :key="cat.id"

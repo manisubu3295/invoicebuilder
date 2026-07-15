@@ -24,12 +24,14 @@ const filters = ref({
 
 const invoiceDate = ref(new Date().toISOString().slice(0, 10));
 const notes = ref('');
-// Bulk run-sheet / item-matrix PDF layouts (mutually exclusive) — default
-// from the client's setting, can be overridden per invoice
+// Bulk run-sheet / item-matrix / item-amount-matrix PDF layouts (mutually
+// exclusive) — default from the client's setting, can be overridden per invoice
 const bulkRunSheet = ref(false);
 const itemMatrix = ref(false);
-function pickBulkRunSheet() { if (bulkRunSheet.value) itemMatrix.value = false; }
-function pickItemMatrix() { if (itemMatrix.value) bulkRunSheet.value = false; }
+const itemAmountMatrix = ref(false);
+function pickBulkRunSheet() { if (bulkRunSheet.value) { itemMatrix.value = false; itemAmountMatrix.value = false; } }
+function pickItemMatrix() { if (itemMatrix.value) { bulkRunSheet.value = false; itemAmountMatrix.value = false; } }
+function pickItemAmountMatrix() { if (itemAmountMatrix.value) { bulkRunSheet.value = false; itemMatrix.value = false; } }
 
 const sym = computed(() => settingsStore.settings?.currencySymbol || 'S$');
 const selectedClient = computed(() => clients.value.find(c => c.id === filters.value.clientId));
@@ -41,6 +43,7 @@ function onClientChange() {
   filters.value.categoryId = cats.length === 1 ? cats[0].id : '';
   bulkRunSheet.value = !!selectedClient.value?.bulkRunSheet;
   itemMatrix.value = !!selectedClient.value?.itemMatrix;
+  itemAmountMatrix.value = !!selectedClient.value?.itemAmountMatrix;
   preview.value = null;
 }
 
@@ -108,6 +111,7 @@ async function createInvoice() {
       notes: notes.value, rows: preview.value.rows,
       bulkRunSheet: bulkRunSheet.value,
       itemMatrix: itemMatrix.value,
+      itemAmountMatrix: itemAmountMatrix.value,
     });
     router.push(`/invoices/${data.id}`);
   } catch (e) { error.value = e.response?.data?.message || 'Failed to create invoice.'; }
@@ -292,6 +296,12 @@ async function createInvoice() {
             <input v-model="itemMatrix" @change="pickItemMatrix" type="checkbox" class="w-4 h-4 rounded accent-blue-600"/>
             <span class="text-sm text-gray-700">Item matrix invoice format
               <span class="text-xs text-gray-400 font-normal ml-1">— No / Date / Run Sheet, one column per item, Total, with a period total row</span>
+            </span>
+          </label>
+          <label class="flex items-center gap-2.5 cursor-pointer mt-2">
+            <input v-model="itemAmountMatrix" @change="pickItemAmountMatrix" type="checkbox" class="w-4 h-4 rounded accent-blue-600"/>
+            <span class="text-sm text-gray-700">Item matrix (with amounts) invoice format
+              <span class="text-xs text-gray-400 font-normal ml-1">— No / Date / Run Sheet, Count + Amount per item (catalog price), Total, with a period totals row</span>
             </span>
           </label>
         </template>

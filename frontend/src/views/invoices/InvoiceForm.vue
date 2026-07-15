@@ -14,7 +14,7 @@ const currency = computed(() => settingsStore.settings?.currency || 'SGD');
 const sym = computed(() => settingsStore.settings?.currencySymbol || 'S$');
 
 const form = ref({
-  clientId: '', categoryId: '', date: new Date().toISOString().split('T')[0], dueDate: '', notes: '', quotationId: null, bulkRunSheet: false, itemMatrix: false,
+  clientId: '', categoryId: '', date: new Date().toISOString().split('T')[0], dueDate: '', notes: '', quotationId: null, bulkRunSheet: false, itemMatrix: false, itemAmountMatrix: false,
   items: [{ sno: 1, itemType: 'service', jobDescription: '', fromDate: '', toDate: '', rate: '', rateType: 'per_week', deliveryDate: '', deliveryDates: [], quantity: 1, unitPrice: '', totalAmount: 0, runSheetNo: '' }],
 });
 const clients = ref([]);
@@ -138,6 +138,7 @@ watch(() => form.value.clientId, () => {
     const c = clients.value.find(c => c.id === form.value.clientId);
     form.value.bulkRunSheet = !!c?.bulkRunSheet;
     form.value.itemMatrix = !!c?.itemMatrix;
+    form.value.itemAmountMatrix = !!c?.itemAmountMatrix;
   }
   evalRunSheetMode();
 });
@@ -153,7 +154,7 @@ onMounted(async () => {
     const { data } = await invoicesApi.get(route.params.id);
     form.value = {
       clientId: data.clientId, categoryId: data.categoryId || '', date: data.date, dueDate: data.dueDate || '', notes: data.notes || '', quotationId: data.quotationId || null,
-      bulkRunSheet: !!data.bulkRunSheet, itemMatrix: !!data.itemMatrix,
+      bulkRunSheet: !!data.bulkRunSheet, itemMatrix: !!data.itemMatrix, itemAmountMatrix: !!data.itemAmountMatrix,
       items: (data.items || []).map(i => {
         let deliveryDates = [];
         try { deliveryDates = i.deliveryDates ? JSON.parse(i.deliveryDates) : []; } catch {}
@@ -171,9 +172,10 @@ onMounted(async () => {
   }
 });
 
-// The two invoice PDF formats are mutually exclusive — picking one clears the other
-function pickBulkRunSheet() { if (form.value.bulkRunSheet) form.value.itemMatrix = false; }
-function pickItemMatrix() { if (form.value.itemMatrix) form.value.bulkRunSheet = false; }
+// The three invoice PDF formats are mutually exclusive — picking one clears the other two
+function pickBulkRunSheet() { if (form.value.bulkRunSheet) { form.value.itemMatrix = false; form.value.itemAmountMatrix = false; } }
+function pickItemMatrix() { if (form.value.itemMatrix) { form.value.bulkRunSheet = false; form.value.itemAmountMatrix = false; } }
+function pickItemAmountMatrix() { if (form.value.itemAmountMatrix) { form.value.bulkRunSheet = false; form.value.itemMatrix = false; } }
 
 async function submit() {
   error.value = '';
@@ -287,6 +289,12 @@ async function submit() {
           <input v-model="form.itemMatrix" @change="pickItemMatrix" type="checkbox" class="w-4 h-4 rounded accent-blue-600"/>
           <span class="text-sm text-gray-700">Item matrix invoice format
             <span class="text-xs text-gray-400 font-normal ml-1">— No / Date / Run Sheet, one column per item, Total, with a period total row</span>
+          </span>
+        </label>
+        <label class="flex items-center gap-2.5 cursor-pointer mt-2">
+          <input v-model="form.itemAmountMatrix" @change="pickItemAmountMatrix" type="checkbox" class="w-4 h-4 rounded accent-blue-600"/>
+          <span class="text-sm text-gray-700">Item matrix (with amounts) invoice format
+            <span class="text-xs text-gray-400 font-normal ml-1">— No / Date / Run Sheet, Count + Amount per item (catalog price), Total, with a period totals row</span>
           </span>
         </label>
       </template>

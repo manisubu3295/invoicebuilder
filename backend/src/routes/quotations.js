@@ -8,6 +8,7 @@ const { createQuotationWithNumber, createInvoiceWithNumber, generateQuotationNum
 const { generateQuotationPDF } = require('../services/pdfService');
 const { sendQuotationEmail } = require('../services/emailService');
 const { isTestModeEnabled } = require('../services/testMode');
+const { findInvalidCatalogItem } = require('../services/catalogValidation');
 
 router.use(auth);
 
@@ -66,6 +67,9 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'clientId, date, and items are required' });
     }
 
+    const catalogErr = await findInvalidCatalogItem(items, { nameField: 'jobDescription', deliveryOnly: true });
+    if (catalogErr) return res.status(400).json({ message: catalogErr });
+
     const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
 
     const quotation = await createQuotationWithNumber(clientId, { date, validUntil: validUntil || null, notes, totalAmount });
@@ -100,9 +104,24 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
     if (!q) return res.status(404).json({ message: 'Quotation not found' });
 
     const { date, validUntil, notes, status, items } = req.body;
+
+    // Only touch fields actually present in the request — blindly passing
+    // every destructured field (most of them undefined on a partial update)
+    // would wipe date/notes/status via Sequelize treating `undefined` as
+    // "set this field", and the `|| null` fallback turns a missing
+    // validUntil into an explicit null. Mirrors the same fix in invoices.js.
+    const fields = {};
+    if (date !== undefined) fields.date = date;
+    if (validUntil !== undefined) fields.validUntil = validUntil || null;
+    if (notes !== undefined) fields.notes = notes;
+    if (status !== undefined) fields.status = status;
+
     if (items) {
+      const catalogErr = await findInvalidCatalogItem(items, { nameField: 'jobDescription', deliveryOnly: true });
+      if (catalogErr) return res.status(400).json({ message: catalogErr });
+
       await QuotationItem.destroy({ where: { quotationId: q.id } });
-      const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
+      fields.totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
       const qItems = items.map((item, idx) => ({
         quotationId: q.id,
         sno: item.sno || idx + 1,
@@ -118,10 +137,8 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
         totalAmount: num(item.totalAmount),
       }));
       await QuotationItem.bulkCreate(qItems);
-      await q.update({ date, validUntil: validUntil || null, notes, status, totalAmount });
-    } else {
-      await q.update({ date, validUntil: validUntil || null, notes, status });
     }
+    if (Object.keys(fields).length) await q.update(fields);
 
     const full = await Quotation.findByPk(q.id, {
       include: [{ model: Client, as: 'client' }, { model: QuotationItem, as: 'items' }],

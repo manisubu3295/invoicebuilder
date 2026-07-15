@@ -20,6 +20,8 @@ module.exports = (sequelize, DataTypes) => {
     bulkRunSheet: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     // Default this client's invoices to the item-matrix PDF layout
     itemMatrix: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    // Default this client's invoices to the item-amount-matrix PDF layout
+    itemAmountMatrix: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   }, {
     tableName: 'clients',
     timestamps: true,

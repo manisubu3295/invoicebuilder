@@ -6,11 +6,12 @@ import { clientsApi, categoriesApi } from '../../api/index.js';
 const route = useRoute();
 const router = useRouter();
 const isEdit = computed(() => !!route.params.id);
-const form = ref({ companyName: '', clientCode: '', contactPerson: '', email: '', phone: '', address: '', invoicePrefix: '', invoiceStartNumber: '', quotationPrefix: '', quotationStartNumber: '', requiresRunSheet: false, bulkRunSheet: false, itemMatrix: false, categoryIds: [] });
+const form = ref({ companyName: '', clientCode: '', contactPerson: '', email: '', phone: '', address: '', invoicePrefix: '', invoiceStartNumber: '', quotationPrefix: '', quotationStartNumber: '', requiresRunSheet: false, bulkRunSheet: false, itemMatrix: false, itemAmountMatrix: false, categoryIds: [] });
 
-// The two invoice PDF formats are mutually exclusive — picking one clears the other
-function pickBulkRunSheet() { if (form.value.bulkRunSheet) form.value.itemMatrix = false; }
-function pickItemMatrix() { if (form.value.itemMatrix) form.value.bulkRunSheet = false; }
+// The three invoice PDF formats are mutually exclusive — picking one clears the other two
+function pickBulkRunSheet() { if (form.value.bulkRunSheet) { form.value.itemMatrix = false; form.value.itemAmountMatrix = false; } }
+function pickItemMatrix() { if (form.value.itemMatrix) { form.value.bulkRunSheet = false; form.value.itemAmountMatrix = false; } }
+function pickItemAmountMatrix() { if (form.value.itemAmountMatrix) { form.value.bulkRunSheet = false; form.value.itemMatrix = false; } }
 const loading = ref(false);
 const error = ref('');
 
@@ -159,6 +160,12 @@ async function submit() {
             <span class="text-sm text-gray-700">Item matrix invoice format</span>
           </label>
           <p v-if="form.requiresRunSheet" class="text-xs text-gray-400 mt-1 pl-12">Invoice PDF lists No / Date / Run Sheet, then one column per item (count delivered), then Total — with a period total row. Can be overridden per invoice.</p>
+
+          <label v-if="form.requiresRunSheet" class="flex items-center gap-2.5 cursor-pointer mt-3 pl-6">
+            <input v-model="form.itemAmountMatrix" @change="pickItemAmountMatrix" type="checkbox" class="w-4 h-4 rounded accent-blue-600"/>
+            <span class="text-sm text-gray-700">Item matrix (with amounts) invoice format</span>
+          </label>
+          <p v-if="form.requiresRunSheet" class="text-xs text-gray-400 mt-1 pl-12">Invoice PDF lists No / Date / Run Sheet, then a Count + Amount column per item (Amount = count × current catalog price), then Total — with a period totals row. Can be overridden per invoice.</p>
         </div>
       </div>
       <div class="flex gap-3 mt-7 pt-5 border-t border-gray-100">

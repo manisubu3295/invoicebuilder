@@ -24,6 +24,11 @@ module.exports = (sequelize, DataTypes) => {
     // <one column per item> | Total, with a period total row). Takes
     // priority over bulkRunSheet if both are somehow set.
     itemMatrix: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    // Render the PDF in item-amount-matrix format (Srl No | Date | Run Sheet |
+    // <Count + Amount columns per item, Amount = count x current Item Catalog
+    // price> | Total, with a period totals row). Takes priority over both
+    // itemMatrix and bulkRunSheet if more than one is somehow set.
+    itemAmountMatrix: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     periodStart: { type: DataTypes.DATEONLY },
     periodEnd: { type: DataTypes.DATEONLY },
     isTest: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
