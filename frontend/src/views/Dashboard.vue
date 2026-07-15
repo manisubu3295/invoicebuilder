@@ -155,7 +155,7 @@ const tiles = computed(() => {
     },
     {
       key: 'outstanding', label: 'Outstanding', icon: 'hourglass_top', accent: 'amber',
-      value: fmtSGD(stats.value.outstandingAmount), to: '/invoices?status=sent',
+      value: fmtSGD(stats.value.outstandingAmount), to: '/invoices',
       note: `${stats.value.outstandingCount} invoice${stats.value.outstandingCount === 1 ? '' : 's'}`,
       warn: stats.value.overdueInvoices ? `${stats.value.overdueInvoices} overdue` : '',
     },

@@ -16,6 +16,10 @@ module.exports = (sequelize, DataTypes) => {
     quotationStartNumber: { type: DataTypes.INTEGER, allowNull: true },
     isTest: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     requiresRunSheet: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    // Default this client's invoices to the bulk run-sheet PDF layout
+    bulkRunSheet: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    // Default this client's invoices to the item-matrix PDF layout
+    itemMatrix: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   }, {
     tableName: 'clients',
     timestamps: true,

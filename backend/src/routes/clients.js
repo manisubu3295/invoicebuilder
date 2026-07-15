@@ -29,7 +29,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', rbac('admin'), async (req, res) => {
   try {
-    const { companyName, clientCode, contactPerson, email, phone, address, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber, requiresRunSheet, categoryIds } = req.body;
+    const { companyName, clientCode, contactPerson, email, phone, address, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber, requiresRunSheet, bulkRunSheet, itemMatrix, categoryIds } = req.body;
     if (!companyName || !clientCode) return res.status(400).json({ message: 'Company name and client code required' });
 
     const isTest = isTestModeEnabled();
@@ -44,6 +44,8 @@ router.post('/', rbac('admin'), async (req, res) => {
       quotationPrefix: quotationPrefix?.trim() || null,
       quotationStartNumber: quotationStartNumber || null,
       requiresRunSheet: !!requiresRunSheet,
+      bulkRunSheet: !!bulkRunSheet,
+      itemMatrix: !!itemMatrix,
     });
     await client.setCategories(Array.isArray(categoryIds) ? categoryIds : []);
 
@@ -59,7 +61,7 @@ router.put('/:id', rbac('admin'), async (req, res) => {
     const client = await Client.findOne({ where: { id: req.params.id, isTest: isTestModeEnabled() } });
     if (!client) return res.status(404).json({ message: 'Client not found' });
 
-    const { companyName, clientCode, contactPerson, email, phone, address, isActive, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber, requiresRunSheet, categoryIds } = req.body;
+    const { companyName, clientCode, contactPerson, email, phone, address, isActive, invoicePrefix, invoiceStartNumber, quotationPrefix, quotationStartNumber, requiresRunSheet, bulkRunSheet, itemMatrix, categoryIds } = req.body;
     await client.update({
       companyName, clientCode: clientCode?.toUpperCase(), contactPerson, email, phone, address, isActive,
       invoicePrefix: invoicePrefix?.trim() || null,
@@ -67,6 +69,8 @@ router.put('/:id', rbac('admin'), async (req, res) => {
       quotationPrefix: quotationPrefix?.trim() || null,
       quotationStartNumber: quotationStartNumber || null,
       requiresRunSheet: requiresRunSheet !== undefined ? !!requiresRunSheet : client.requiresRunSheet,
+      bulkRunSheet: bulkRunSheet !== undefined ? !!bulkRunSheet : client.bulkRunSheet,
+      itemMatrix: itemMatrix !== undefined ? !!itemMatrix : client.itemMatrix,
     });
     if (categoryIds !== undefined) await client.setCategories(Array.isArray(categoryIds) ? categoryIds : []);
 

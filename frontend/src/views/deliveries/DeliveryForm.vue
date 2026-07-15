@@ -23,6 +23,7 @@ const form = ref({
   deliveredById: '',
   notes: '',
   items: [blankItem()],
+  runSheets: [blankRunSheet()],
 });
 
 // ── Category (per-client, mandatory) ────────────────────────────────
@@ -68,12 +69,43 @@ function onDelivererBlur() {
 
 // ── Items ──────────────────────────────────────────────────────────
 function blankItem() {
-  return { _search: '', _catalogId: '', itemName: '', quantity: 1, unitPrice: '', notes: '', runSheetNo: '' };
+  return { _search: '', _catalogId: '', itemName: '', quantity: 1, unitPrice: '', notes: '' };
 }
 
-const openCatalogIdx = ref(null);
+function blankRunSheet() {
+  return { runSheetNo: '', items: [blankItem()] };
+}
+
+function addRunSheet() {
+  form.value.runSheets.push(blankRunSheet());
+}
+
+function removeRunSheet(rsIdx) {
+  if (form.value.runSheets.length > 1) form.value.runSheets.splice(rsIdx, 1);
+}
+
+function addRunSheetItem(rsIdx) {
+  form.value.runSheets[rsIdx].items.push(blankItem());
+}
+
+function removeRunSheetItem(rsIdx, itemIdx) {
+  const rs = form.value.runSheets[rsIdx];
+  if (rs.items.length > 1) rs.items.splice(itemIdx, 1);
+}
+
+const runSheetGrandTotal = computed(() =>
+  form.value.runSheets.reduce((total, rs) =>
+    total + rs.items.reduce((s, i) => s + parseFloat(i.quantity || 0) * parseFloat(i.unitPrice || 0), 0),
+  0).toFixed(2)
+);
+
+const openCatalogKey = ref(null); // { flat: idx } or { rsIdx, itemIdx } or null
 const dropdownPos = ref({ top: 0, left: 0, minWidth: 260 });
-const openItem = computed(() => openCatalogIdx.value !== null ? form.value.items[openCatalogIdx.value] : null);
+const openItem = computed(() => {
+  if (!openCatalogKey.value) return null;
+  if (openCatalogKey.value.flat !== undefined) return form.value.items[openCatalogKey.value.flat];
+  return form.value.runSheets[openCatalogKey.value.rsIdx]?.items[openCatalogKey.value.itemIdx] ?? null;
+});
 
 function filteredCatalog(item) {
   const q = (item._search || '').toLowerCase();
@@ -81,14 +113,14 @@ function filteredCatalog(item) {
   return catalog.value.filter(c => c.name.toLowerCase().includes(q));
 }
 
-function openCatalog(item, idx, event) {
+function openCatalog(item, key, event) {
   const rect = event.target.getBoundingClientRect();
   dropdownPos.value = {
     top: rect.bottom + window.scrollY + 4,
     left: rect.left + window.scrollX,
     minWidth: Math.max(260, rect.width),
   };
-  openCatalogIdx.value = idx;
+  openCatalogKey.value = key;
 }
 
 function selectCatalog(item, cat) {
@@ -96,7 +128,7 @@ function selectCatalog(item, cat) {
   item._search = cat.name;
   item.itemName = cat.name;
   item.unitPrice = parseFloat(cat.unitPrice);
-  openCatalogIdx.value = null;
+  openCatalogKey.value = null;
 }
 
 function clearCatalog(item) {
@@ -111,7 +143,7 @@ function onItemInput(item, val) {
 }
 
 function onItemBlur() {
-  setTimeout(() => { openCatalogIdx.value = null; }, 160);
+  setTimeout(() => { openCatalogKey.value = null; }, 160);
 }
 
 function addItem() { form.value.items.push(blankItem()); }
@@ -160,18 +192,40 @@ onMounted(async () => {
       const deliverer = deliverers.value.find(u => u.id === log.deliveredById);
       delivererSearch.value = deliverer?.name || log.deliveredBy?.name || '';
 
-      form.value.items = log.items.map(i => {
-        const cat = catalog.value.find(c => c.name === i.itemName);
-        return {
-          _search: i.itemName,
-          _catalogId: cat?.id || '',
-          itemName: i.itemName,
-          quantity: parseFloat(i.quantity),
-          unitPrice: parseFloat(i.unitPrice),
-          notes: i.notes || '',
-          runSheetNo: i.runSheetNo || '',
-        };
-      });
+      const requiresRunSheet = clients.value.find(c => c.id === log.clientId)?.requiresRunSheet;
+      if (requiresRunSheet) {
+        const grouped = {};
+        const order = [];
+        log.items.forEach(i => {
+          const key = i.runSheetNo || '';
+          if (!grouped[key]) { grouped[key] = []; order.push(key); }
+          grouped[key].push(i);
+        });
+        form.value.runSheets = order.map(rsNo => ({
+          runSheetNo: rsNo,
+          items: grouped[rsNo].map(i => ({
+            _search: i.itemName,
+            _catalogId: catalog.value.find(c => c.name === i.itemName)?.id || '',
+            itemName: i.itemName,
+            quantity: parseFloat(i.quantity),
+            unitPrice: parseFloat(i.unitPrice),
+            notes: i.notes || '',
+          }))
+        }));
+        if (!form.value.runSheets.length) form.value.runSheets = [blankRunSheet()];
+      } else {
+        form.value.items = log.items.map(i => {
+          const cat = catalog.value.find(c => c.name === i.itemName);
+          return {
+            _search: i.itemName,
+            _catalogId: cat?.id || '',
+            itemName: i.itemName,
+            quantity: parseFloat(i.quantity),
+            unitPrice: parseFloat(i.unitPrice),
+            notes: i.notes || '',
+          };
+        });
+      }
     } catch { error.value = 'Failed to load delivery entry.'; }
     finally { loading.value = false; }
   }
@@ -183,7 +237,22 @@ async function save() {
   if (!form.value.categoryId) { error.value = 'Please select a category.'; return; }
   if (!form.value.deliveryDate) { error.value = 'Please select a delivery date.'; return; }
   if (!form.value.deliveredById) { error.value = 'Please select who delivered.'; return; }
-  const validItems = form.value.items.filter(i => i.itemName.trim());
+  let validItems;
+  if (showRunSheet.value) {
+    // This client requires run sheets — every group with items needs a number
+    const missingRs = form.value.runSheets.some(rs =>
+      rs.items.some(i => i.itemName.trim()) && !rs.runSheetNo.trim());
+    if (missingRs) { error.value = 'Please enter a Run Sheet No. for every run sheet.'; return; }
+    validItems = form.value.runSheets.flatMap(rs =>
+      rs.items
+        .filter(i => i.itemName.trim())
+        .map(i => ({ ...i, runSheetNo: rs.runSheetNo.trim() }))
+    );
+  } else {
+    validItems = form.value.items
+      .filter(i => i.itemName.trim())
+      .map(i => ({ ...i, runSheetNo: '' }));
+  }
   if (!validItems.length) { error.value = 'Please enter at least one item.'; return; }
   saving.value = true;
   try {
@@ -322,8 +391,8 @@ async function save() {
         </div>
       </div>
 
-      <!-- ── Items table ── -->
-      <div class="card p-0 overflow-hidden">
+      <!-- ── Items table (flat mode — no run sheet required) ── -->
+      <div v-if="!showRunSheet" class="card p-0 overflow-hidden">
         <div class="card-header">
           <span class="card-title">Items Delivered</span>
           <button type="button" @click="addItem"
@@ -334,7 +403,6 @@ async function save() {
             Add Row
           </button>
         </div>
-
         <div class="overflow-x-auto">
           <table class="w-full text-sm border-collapse min-w-[580px]">
             <thead>
@@ -350,68 +418,34 @@ async function save() {
             <tbody>
               <tr v-for="(item, idx) in form.items" :key="idx"
                 class="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50/50 dark:hover:bg-slate-700/30 transition-colors">
-
-                <!-- Row number -->
-                <td class="px-3 py-3.5 text-center text-gray-300 dark:text-slate-600 text-xs border-r border-gray-100 dark:border-slate-700">
-                  {{ idx + 1 }}
-                </td>
-
-                <!-- Item / Description — combobox -->
+                <td class="px-3 py-3.5 text-center text-gray-300 dark:text-slate-600 text-xs border-r border-gray-100 dark:border-slate-700">{{ idx + 1 }}</td>
                 <td class="px-3 py-2.5 border-r border-gray-100 dark:border-slate-700 relative">
                   <div class="relative">
-                    <!-- Input -->
                     <input
                       :value="item._search"
                       @input="onItemInput(item, $event.target.value)"
-                      @focus="openCatalog(item, idx, $event)"
+                      @focus="openCatalog(item, { flat: idx }, $event)"
                       @blur="onItemBlur"
-                      type="text"
-                      placeholder="Item name…"
-                      autocomplete="off"
-                      :class="[
-                        'w-full text-sm rounded-lg border px-3 py-2 pr-7 focus:outline-none focus:ring-2 transition-colors',
+                      type="text" placeholder="Item name…" autocomplete="off"
+                      :class="['w-full text-sm rounded-lg border px-3 py-2 pr-7 focus:outline-none focus:ring-2 transition-colors',
                         item._catalogId
                           ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 focus:ring-blue-100 dark:focus:ring-blue-900'
-                          : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700/40 text-gray-900 dark:text-slate-100 focus:border-blue-400 focus:ring-blue-50 dark:focus:ring-blue-900/30',
-                      ]"
+                          : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700/40 text-gray-900 dark:text-slate-100 focus:border-blue-400 focus:ring-blue-50 dark:focus:ring-blue-900/30']"
                     />
-                    <!-- Right icon: × clear (catalog) or search -->
                     <button v-if="item._catalogId" type="button" @mousedown.prevent="clearCatalog(item)"
-                      class="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-blue-400 hover:text-blue-700 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-base font-bold leading-none transition-colors">
-                      ×
-                    </button>
+                      class="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-blue-400 hover:text-blue-700 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-base font-bold leading-none transition-colors">×</button>
                     <svg v-else class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300 dark:text-slate-600 pointer-events-none"
                       fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
                   </div>
-
-                  <!-- Run Sheet No. — only for clients that require it -->
-                  <input
-                    v-if="showRunSheet"
-                    v-model="item.runSheetNo"
-                    type="text"
-                    placeholder="Run Sheet No."
-                    class="mt-1.5 w-full text-xs text-gray-600 dark:text-slate-300 bg-transparent border-0 border-b border-dashed border-gray-200 dark:border-slate-700 focus:outline-none focus:border-blue-400 placeholder-gray-300 dark:placeholder-slate-600"
-                  />
-
-                  <!-- Per-row note (minimal, below) -->
-                  <input
-                    v-model="item.notes"
-                    type="text"
-                    placeholder="+ note"
-                    class="mt-1.5 w-full text-xs text-gray-400 dark:text-slate-500 bg-transparent border-0 focus:outline-none placeholder-gray-200 dark:placeholder-slate-700 italic"
-                  />
+                  <input v-model="item.notes" type="text" placeholder="+ note"
+                    class="mt-1.5 w-full text-xs text-gray-400 dark:text-slate-500 bg-transparent border-0 focus:outline-none placeholder-gray-200 dark:placeholder-slate-700 italic"/>
                 </td>
-
-                <!-- Qty -->
                 <td class="px-3 py-3.5 border-r border-gray-100 dark:border-slate-700">
                   <input v-model.number="item.quantity" type="number" min="0" step="0.001"
-                    class="w-full text-right bg-transparent focus:outline-none text-sm text-gray-900 dark:text-slate-100 tabular-nums"
-                    placeholder="0"/>
+                    class="w-full text-right bg-transparent focus:outline-none text-sm text-gray-900 dark:text-slate-100 tabular-nums" placeholder="0"/>
                 </td>
-
-                <!-- Unit Price -->
                 <td class="px-3 py-3.5 border-r border-gray-100 dark:border-slate-700">
                   <div class="flex items-center justify-end gap-1">
                     <span class="text-gray-300 dark:text-slate-600 text-xs">S$</span>
@@ -421,38 +455,148 @@ async function save() {
                       placeholder="0.00"/>
                   </div>
                 </td>
-
-                <!-- Amount -->
                 <td class="px-4 py-3.5 border-r border-gray-100 dark:border-slate-700 text-right">
-                  <span class="font-semibold text-gray-800 dark:text-slate-200 tabular-nums">
-                    S${{ rowTotal(item) }}
-                  </span>
+                  <span class="font-semibold text-gray-800 dark:text-slate-200 tabular-nums">S${{ rowTotal(item) }}</span>
                 </td>
-
-                <!-- Remove -->
                 <td class="px-2 py-3.5 text-center">
                   <button v-if="form.items.length > 1" type="button" @click="removeItem(idx)"
-                    class="w-6 h-6 rounded flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-lg font-bold leading-none">
-                    ×
-                  </button>
+                    class="w-6 h-6 rounded flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-lg font-bold leading-none">×</button>
                 </td>
               </tr>
             </tbody>
-
             <tfoot>
               <tr class="bg-gray-50 dark:bg-slate-700/60 border-t border-gray-200 dark:border-slate-600">
-                <td colspan="4" class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-widest text-gray-500 dark:text-slate-400">
-                  Total Amount
-                </td>
-                <td class="px-4 py-3 text-right font-bold tabular-nums text-base text-gray-900 dark:text-slate-100">
-                  S${{ grandTotal }}
-                </td>
+                <td colspan="4" class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-widest text-gray-500 dark:text-slate-400">Total Amount</td>
+                <td class="px-4 py-3 text-right font-bold tabular-nums text-base text-gray-900 dark:text-slate-100">S${{ grandTotal }}</td>
                 <td></td>
               </tr>
             </tfoot>
           </table>
         </div>
       </div>
+
+      <!-- ── RunSheet groups (clients that require run sheets) ── -->
+      <template v-else>
+        <div v-for="(rs, rsIdx) in form.runSheets" :key="rsIdx" class="card p-0 overflow-hidden">
+
+          <!-- RunSheet header -->
+          <div class="flex items-center gap-3 px-4 py-3 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-800/40">
+            <svg class="w-4 h-4 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            <label class="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400 shrink-0">Run Sheet No.</label>
+            <input
+              v-model="rs.runSheetNo"
+              type="text"
+              placeholder="e.g. RS-001"
+              class="flex-1 min-w-0 text-sm font-semibold bg-transparent border-0 border-b border-dashed border-indigo-300 dark:border-indigo-600 focus:outline-none focus:border-indigo-500 text-gray-900 dark:text-slate-100 placeholder-indigo-300 dark:placeholder-indigo-700"
+            />
+            <button v-if="form.runSheets.length > 1" type="button" @click="removeRunSheet(rsIdx)"
+              class="ml-2 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition-colors shrink-0">
+              Remove
+            </button>
+          </div>
+
+          <!-- Items for this runsheet -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm border-collapse min-w-[580px]">
+              <thead>
+                <tr class="bg-gray-50 dark:bg-slate-700/60 border-b border-gray-200 dark:border-slate-600 text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                  <th class="px-3 py-2.5 text-center w-10">#</th>
+                  <th class="px-4 py-2.5 text-left">Item / Description</th>
+                  <th class="px-3 py-2.5 text-right w-24">Qty</th>
+                  <th class="px-3 py-2.5 text-right w-32">Unit Price</th>
+                  <th class="px-4 py-2.5 text-right w-32">Amount</th>
+                  <th class="w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, itemIdx) in rs.items" :key="itemIdx"
+                  class="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50/50 dark:hover:bg-slate-700/30 transition-colors">
+                  <td class="px-3 py-3.5 text-center text-gray-300 dark:text-slate-600 text-xs border-r border-gray-100 dark:border-slate-700">{{ itemIdx + 1 }}</td>
+                  <td class="px-3 py-2.5 border-r border-gray-100 dark:border-slate-700 relative">
+                    <div class="relative">
+                      <input
+                        :value="item._search"
+                        @input="onItemInput(item, $event.target.value)"
+                        @focus="openCatalog(item, { rsIdx, itemIdx }, $event)"
+                        @blur="onItemBlur"
+                        type="text" placeholder="Item name…" autocomplete="off"
+                        :class="['w-full text-sm rounded-lg border px-3 py-2 pr-7 focus:outline-none focus:ring-2 transition-colors',
+                          item._catalogId
+                            ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 focus:ring-blue-100 dark:focus:ring-blue-900'
+                            : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700/40 text-gray-900 dark:text-slate-100 focus:border-blue-400 focus:ring-blue-50 dark:focus:ring-blue-900/30']"
+                      />
+                      <button v-if="item._catalogId" type="button" @mousedown.prevent="clearCatalog(item)"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-blue-400 hover:text-blue-700 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-base font-bold leading-none transition-colors">×</button>
+                      <svg v-else class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300 dark:text-slate-600 pointer-events-none"
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                      </svg>
+                    </div>
+                    <input v-model="item.notes" type="text" placeholder="+ note"
+                      class="mt-1.5 w-full text-xs text-gray-400 dark:text-slate-500 bg-transparent border-0 focus:outline-none placeholder-gray-200 dark:placeholder-slate-700 italic"/>
+                  </td>
+                  <td class="px-3 py-3.5 border-r border-gray-100 dark:border-slate-700">
+                    <input v-model.number="item.quantity" type="number" min="0" step="0.001"
+                      class="w-full text-right bg-transparent focus:outline-none text-sm text-gray-900 dark:text-slate-100 tabular-nums" placeholder="0"/>
+                  </td>
+                  <td class="px-3 py-3.5 border-r border-gray-100 dark:border-slate-700">
+                    <div class="flex items-center justify-end gap-1">
+                      <span class="text-gray-300 dark:text-slate-600 text-xs">S$</span>
+                      <input v-model.number="item.unitPrice" type="number" min="0" step="0.01"
+                        :class="['text-right bg-transparent focus:outline-none text-sm w-20 tabular-nums',
+                          item._catalogId ? 'text-blue-600 dark:text-blue-400 font-semibold' : 'text-gray-900 dark:text-slate-100']"
+                        placeholder="0.00"/>
+                    </div>
+                  </td>
+                  <td class="px-4 py-3.5 border-r border-gray-100 dark:border-slate-700 text-right">
+                    <span class="font-semibold text-gray-800 dark:text-slate-200 tabular-nums">S${{ rowTotal(item) }}</span>
+                  </td>
+                  <td class="px-2 py-3.5 text-center">
+                    <button v-if="rs.items.length > 1" type="button" @click="removeRunSheetItem(rsIdx, itemIdx)"
+                      class="w-6 h-6 rounded flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-lg font-bold leading-none">×</button>
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr class="bg-gray-50 dark:bg-slate-700/60 border-t border-gray-200 dark:border-slate-600">
+                  <td colspan="4" class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-widest text-gray-500 dark:text-slate-400">Subtotal</td>
+                  <td class="px-4 py-3 text-right font-bold tabular-nums text-base text-gray-900 dark:text-slate-100">
+                    S${{ rs.items.reduce((s, i) => s + parseFloat(i.quantity || 0) * parseFloat(i.unitPrice || 0), 0).toFixed(2) }}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <!-- Add item to this runsheet -->
+          <div class="px-4 py-2.5 border-t border-gray-100 dark:border-slate-700">
+            <button type="button" @click="addRunSheetItem(rsIdx)"
+              class="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Add Item
+            </button>
+          </div>
+        </div>
+
+        <!-- Add runsheet + grand total -->
+        <div class="flex items-center justify-between">
+          <button type="button" @click="addRunSheet"
+            class="flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 px-3 py-2 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add Run Sheet
+          </button>
+          <div class="text-sm font-bold text-gray-800 dark:text-slate-200 tabular-nums">
+            Grand Total: <span class="text-base">S${{ runSheetGrandTotal }}</span>
+          </div>
+        </div>
+      </template>
 
       <!-- No catalog warning -->
       <div v-if="!catalog.length" class="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-lg px-4 py-3">
@@ -472,7 +616,7 @@ async function save() {
 
     <!-- Catalog dropdown — Teleported to body to escape overflow-hidden/overflow-x-auto clipping -->
     <Teleport to="body">
-      <div v-if="openCatalogIdx !== null && openItem"
+      <div v-if="openCatalogKey !== null && openItem"
         class="fixed z-[9999] bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-xl max-h-52 overflow-y-auto"
         :style="{ top: dropdownPos.top + 'px', left: dropdownPos.left + 'px', minWidth: dropdownPos.minWidth + 'px' }">
         <div v-if="!filteredCatalog(openItem).length"

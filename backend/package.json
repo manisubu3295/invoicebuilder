@@ -6,9 +6,9 @@
   "scripts": {
     "start": "NODE_ENV=production node src/app.js",
     "dev": "nodemon src/app.js",
+    "backup": "node src/services/backupService.js",
     "db:migrate": "sequelize-cli db:migrate",
-    "db:seed": "sequelize-cli db:seed:all",
-    "db:reset": "sequelize-cli db:drop && sequelize-cli db:create && sequelize-cli db:migrate && sequelize-cli db:seed:all"
+    "db:seed": "sequelize-cli db:seed:all"
   },
   "keywords": [],
   "author": "",
@@ -32,7 +32,9 @@
     "puppeteer": "^24.43.1",
     "sequelize": "^6.37.8",
     "sqlite3": "^6.0.1",
-    "uuid": "^14.0.1"
+    "uuid": "^14.0.1",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.14",

@@ -5,6 +5,7 @@ import { invoicesApi } from '../../api/index.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { useAuthStore } from '../../stores/auth.js';
 import StatusBadge from '../../components/shared/StatusBadge.vue';
+import { clubDeliveryRows, formatQty } from '../../utils/clubDeliveryRows.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -153,6 +154,107 @@ async function deleteInvoice() {
 async function reload() { invoice.value = (await invoicesApi.get(route.params.id)).data; }
 
 const hasRunSheet = computed(() => !!invoice.value?.items?.some(i => i.runSheetNo));
+
+// PDF format can be flipped on an already-created invoice — the checkboxes
+// on the create screens only set the initial value, so this is the only way
+// to change it afterwards. The two formats are mutually exclusive: picking
+// one clears the other in the same request.
+const bulkToggleLoading = ref(false);
+async function setInvoiceFormat(format) {
+  bulkToggleLoading.value = true;
+  try {
+    const bulkRunSheet = format === 'bulk';
+    const itemMatrix = format === 'matrix';
+    await invoicesApi.update(invoice.value.id, { bulkRunSheet, itemMatrix });
+    await reload();
+    showToast(format === 'standard' ? 'Switched to standard format'
+      : format === 'bulk' ? 'Switched to bulk run-sheet format' : 'Switched to item matrix format');
+  } catch (e) { showToast('Error: ' + (e.response?.data?.message || 'Failed to update format')); }
+  finally { bulkToggleLoading.value = false; }
+}
+
+// Delivery invoices club same date + run sheet + item + unit-price lines
+// (e.g. two drivers delivering the same item the same day) into one displayed
+// row, matching the printed PDF. The stored items keep the per-driver detail.
+// Reshaped as itemType 'delivery' so calcPeriod/rateLabel show the date and
+// qty × price.
+const displayItems = computed(() => {
+  const items = (invoice.value?.items || []).slice().sort((a, b) => a.sno - b.sno);
+  if (invoice.value?.invoiceType !== 'delivery') return items;
+  return clubDeliveryRows(items, { date: 'fromDate', name: 'jobDescription', price: 'rate' })
+    .map((g, i) => ({ ...g, sno: i + 1, itemType: 'delivery', deliveryDate: g.fromDate, deliveryDates: null, unitPrice: g.rate }));
+});
+
+// Bulk run-sheet layout (invoice.bulkRunSheet): No / Date / Run Sheet / Item /
+// Count / Total with a subtotal row per run sheet — mirrors the PDF.
+const isBulk = computed(() => !!invoice.value?.bulkRunSheet);
+const bulkRows = computed(() => {
+  if (!isBulk.value) return [];
+  // Normalise both flavours: from-deliveries items carry fromDate + rate,
+  // manually entered delivery items carry deliveryDate + unitPrice
+  const normalized = (invoice.value?.items || []).map(i => ({
+    ...i,
+    _date: i.fromDate || i.deliveryDate || '',
+    _price: (i.rate ?? i.unitPrice) || 0,
+  }));
+  const clubbed = clubDeliveryRows(normalized, { date: '_date', name: 'jobDescription', price: '_price' });
+  const rows = [];
+  let group = null;
+  let sno = 0;
+  const flush = () => {
+    if (group) rows.push({ type: 'subtotal', label: group.rs ? `${group.rs} Total` : 'Total', qty: group.qty, total: group.total });
+    group = null;
+  };
+  for (const item of clubbed) {
+    const key = `${item._date}|${item.runSheetNo}`;
+    if (group && group.key !== key) flush();
+    if (!group) group = { key, rs: item.runSheetNo, qty: 0, total: 0 };
+    group.qty += parseFloat(item.quantity || 0);
+    group.total += parseFloat(item.totalAmount || 0);
+    rows.push({ type: 'item', sno: ++sno, date: item._date, rs: item.runSheetNo, name: item.jobDescription, notes: item.notes, qty: item.quantity, total: item.totalAmount });
+  }
+  flush();
+  return rows;
+});
+
+// Item-matrix layout (invoice.itemMatrix): No / Date / Run Sheet / <one
+// column per item> / Total, one row per (date, run sheet), with a period
+// total row — mirrors the PDF (buildItemMatrixInvoiceHtml).
+const isMatrix = computed(() => !!invoice.value?.itemMatrix);
+const matrixData = computed(() => {
+  if (!isMatrix.value) return { itemNames: [], rows: [], periodDays: 0, colTotals: {}, grandTotal: 0 };
+  const normalized = (invoice.value?.items || []).map(i => ({
+    date: i.fromDate || i.deliveryDate || '',
+    rs: i.runSheetNo || '',
+    name: (i.jobDescription || '').trim(),
+    rate: parseFloat((i.rate ?? i.unitPrice) || 0),
+    qty: parseFloat(i.quantity || 0),
+  }));
+  const itemNames = [...new Set(normalized.map(i => i.name))].sort((a, b) => a.localeCompare(b));
+  const rowMap = new Map();
+  for (const i of normalized) {
+    const key = `${i.date}|${i.rs}`;
+    let row = rowMap.get(key);
+    if (!row) { row = { date: i.date, rs: i.rs, counts: {}, total: 0 }; rowMap.set(key, row); }
+    row.counts[i.name] = (row.counts[i.name] || 0) + i.qty;
+    row.total += i.qty * i.rate;
+  }
+  const rows = [...rowMap.values()].sort((a, b) =>
+    (a.date || '').localeCompare(b.date || '') || (a.rs || '').localeCompare(b.rs || '', undefined, { numeric: true }));
+
+  const inv = invoice.value;
+  let periodDays;
+  if (inv.periodStart && inv.periodEnd) {
+    periodDays = Math.round((new Date(inv.periodEnd) - new Date(inv.periodStart)) / 86400000) + 1;
+  } else {
+    periodDays = [...new Set(rows.map(r => r.date).filter(Boolean))].length || 1;
+  }
+  const colTotals = {};
+  for (const name of itemNames) colTotals[name] = rows.reduce((s, r) => s + (r.counts[name] || 0), 0);
+  const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+
+  return { itemNames, rows, periodDays, colTotals, grandTotal };
+});
 
 const daysUntilDue = computed(() => {
   if (!invoice.value?.dueDate) return null;
@@ -313,8 +415,86 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- Line Items -->
-        <table class="w-full border-collapse mb-4 text-[12.5px]">
+        <!-- PDF format switcher — only meaningful when the invoice has run
+             sheet items; lets you switch an already-created invoice between
+             the standard, bulk, and matrix layouts without recreating it -->
+        <div v-if="hasRunSheet && authStore.isAdmin" class="print:hidden flex items-center gap-3 mb-3 text-xs text-gray-500">
+          <span>Invoice format:</span>
+          <select :value="isMatrix ? 'matrix' : isBulk ? 'bulk' : 'standard'"
+            @change="setInvoiceFormat($event.target.value)" :disabled="bulkToggleLoading"
+            class="border border-gray-200 rounded px-2 py-1 text-xs">
+            <option value="standard">Standard</option>
+            <option value="bulk">Bulk run-sheet</option>
+            <option value="matrix">Item matrix</option>
+          </select>
+          <span v-if="bulkToggleLoading" class="text-gray-400">saving…</span>
+        </div>
+
+        <!-- Line Items — item matrix layout (mirrors the PDF) -->
+        <table v-if="isMatrix" class="w-full border-collapse mb-4 text-[12.5px]">
+          <thead>
+            <tr class="bg-slate-800 text-white text-xs uppercase tracking-wide">
+              <th class="px-3 py-2.5 text-center w-8 border border-slate-700">#</th>
+              <th class="px-3 py-2.5 text-center w-28 border border-slate-700">Date</th>
+              <th class="px-3 py-2.5 text-center w-28 border border-slate-700">Run Sheet</th>
+              <th v-for="name in matrixData.itemNames" :key="name" class="px-3 py-2.5 text-center border border-slate-700">{{ name }}</th>
+              <th class="px-3 py-2.5 text-right w-28 border border-slate-700">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="!matrixData.rows.length"><td :colspan="4 + matrixData.itemNames.length" class="px-3 py-8 text-center text-gray-400 border border-gray-200">No items</td></tr>
+            <tr v-for="(row, ri) in matrixData.rows" :key="ri" class="border-b border-gray-200 hover:bg-gray-50">
+              <td class="px-3 py-3 text-center text-gray-400 border border-gray-200">{{ ri + 1 }}</td>
+              <td class="px-3 py-3 text-center text-gray-600 text-xs border border-gray-200">{{ fmtDate(row.date) }}</td>
+              <td class="px-3 py-3 text-center text-gray-600 text-xs border border-gray-200">{{ row.rs || '—' }}</td>
+              <td v-for="name in matrixData.itemNames" :key="name" class="px-3 py-3 text-center text-slate-700 border border-gray-200">{{ row.counts[name] ? formatQty(row.counts[name]) : '—' }}</td>
+              <td class="px-3 py-3 text-right font-bold text-slate-800 border border-gray-200">{{ fmt(row.total) }}</td>
+            </tr>
+            <tr v-if="matrixData.rows.length" class="bg-gray-100">
+              <td colspan="3" class="px-3 py-2 text-right text-xs font-bold text-slate-700 border border-gray-200">Total for {{ matrixData.periodDays }} day{{ matrixData.periodDays === 1 ? '' : 's' }}</td>
+              <td v-for="name in matrixData.itemNames" :key="name" class="px-3 py-2 text-center text-xs font-bold text-slate-700 border border-gray-200">{{ formatQty(matrixData.colTotals[name]) }}</td>
+              <td class="px-3 py-2 text-right text-xs font-bold text-slate-700 border border-gray-200">{{ fmt(matrixData.grandTotal) }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Line Items — bulk run-sheet layout (mirrors the PDF) -->
+        <table v-else-if="isBulk" class="w-full border-collapse mb-4 text-[12.5px]">
+          <thead>
+            <tr class="bg-slate-800 text-white text-xs uppercase tracking-wide">
+              <th class="px-3 py-2.5 text-center w-8 border border-slate-700">#</th>
+              <th class="px-3 py-2.5 text-center w-28 border border-slate-700">Date</th>
+              <th class="px-3 py-2.5 text-center w-28 border border-slate-700">Run Sheet</th>
+              <th class="px-3 py-2.5 text-left border border-slate-700">Item / Description</th>
+              <th class="px-3 py-2.5 text-right w-24 border border-slate-700">Count</th>
+              <th class="px-3 py-2.5 text-right w-28 border border-slate-700">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="!bulkRows.length"><td colspan="6" class="px-3 py-8 text-center text-gray-400 border border-gray-200">No items</td></tr>
+            <template v-for="(row, ri) in bulkRows" :key="ri">
+              <tr v-if="row.type === 'item'" class="border-b border-gray-200 hover:bg-gray-50">
+                <td class="px-3 py-3 text-center text-gray-400 border border-gray-200">{{ row.sno }}</td>
+                <td class="px-3 py-3 text-center text-gray-600 text-xs border border-gray-200">{{ fmtDate(row.date) }}</td>
+                <td class="px-3 py-3 text-center text-gray-600 text-xs border border-gray-200">{{ row.rs || '—' }}</td>
+                <td class="px-3 py-3 border border-gray-200">
+                  <span class="font-medium text-slate-800">{{ row.name }}</span>
+                  <div v-if="row.notes" class="text-gray-400 text-xs mt-0.5 italic">{{ row.notes }}</div>
+                </td>
+                <td class="px-3 py-3 text-right text-slate-700 border border-gray-200">{{ formatQty(row.qty) }}</td>
+                <td class="px-3 py-3 text-right font-bold text-slate-800 border border-gray-200">{{ fmt(row.total) }}</td>
+              </tr>
+              <tr v-else class="bg-gray-100">
+                <td colspan="4" class="px-3 py-2 text-right text-xs font-bold text-slate-700 border border-gray-200">{{ row.label }}</td>
+                <td class="px-3 py-2 text-right text-xs font-bold text-slate-700 border border-gray-200">{{ formatQty(row.qty) }}</td>
+                <td class="px-3 py-2 text-right text-xs font-bold text-slate-700 border border-gray-200">{{ fmt(row.total) }}</td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+
+        <!-- Line Items — standard layout -->
+        <table v-else class="w-full border-collapse mb-4 text-[12.5px]">
           <thead>
             <tr class="bg-slate-800 text-white text-xs uppercase tracking-wide">
               <th class="px-3 py-2.5 text-center w-8 border border-slate-700">#</th>
@@ -327,7 +507,7 @@ onMounted(async () => {
           </thead>
           <tbody>
             <tr v-if="!invoice.items?.length"><td colspan="6" class="px-3 py-8 text-center text-gray-400 border border-gray-200">No items</td></tr>
-            <tr v-for="item in invoice.items?.slice().sort((a,b)=>a.sno-b.sno)" :key="item.id" class="border-b border-gray-200 hover:bg-gray-50">
+            <tr v-for="item in displayItems" :key="item.id" class="border-b border-gray-200 hover:bg-gray-50">
               <td class="px-3 py-3 text-center text-gray-400 border border-gray-200">{{ item.sno }}</td>
               <td class="px-3 py-3 border border-gray-200">
                 <span class="font-medium text-slate-800">{{ item.jobDescription }}</span>

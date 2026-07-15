@@ -30,12 +30,24 @@ router.get('/dashboard', async (req, res) => {
       raw: true,
     });
 
-    const outstandingCount = await Invoice.count({ where: { status: { [Op.in]: ['sent', 'overdue'] }, isTest: false } });
-    const [outstandingAmount] = await Invoice.findAll({
-      where: { status: { [Op.in]: ['sent', 'overdue'] }, isTest: false },
+    // Outstanding = every unpaid, non-cancelled invoice. Drafts count too:
+    // invoices are often printed or WhatsApped without ever being "marked
+    // sent", but the money is still owed. Partial payments already recorded
+    // against these invoices are deducted.
+    const unpaidWhere = { status: { [Op.in]: ['draft', 'sent', 'overdue'] }, isTest: false };
+    const outstandingCount = await Invoice.count({ where: unpaidWhere });
+    const [outstandingTotal] = await Invoice.findAll({
+      where: unpaidWhere,
       attributes: [[fn('SUM', col('totalAmount')), 'total']],
       raw: true,
     });
+    const [outstandingPaid] = await Payment.findAll({
+      attributes: [[fn('SUM', col('Payment.amount')), 'total']],
+      include: [{ model: Invoice, attributes: [], where: unpaidWhere }],
+      raw: true,
+    });
+    const outstandingAmount = Math.max(0,
+      parseFloat(outstandingTotal?.total || 0) - parseFloat(outstandingPaid?.total || 0));
 
     const activeJobs = await Job.count({ where: { status: { [Op.in]: ['pending', 'in_transit'] } } });
     const overdueInvoices = await Invoice.count({ where: { status: 'overdue', isTest: false } });
@@ -100,7 +112,7 @@ router.get('/dashboard', async (req, res) => {
       monthRevenue: parseFloat(monthRevenue?.total || 0),
       yearRevenue: parseFloat(yearRevenue?.total || 0),
       outstandingCount,
-      outstandingAmount: parseFloat(outstandingAmount?.total || 0),
+      outstandingAmount,
       activeJobs,
       overdueInvoices,
       openQuotationsCount,
@@ -223,7 +235,7 @@ async function getClientSummaryData() {
     const invoices = c.invoices || [];
     const total = invoices.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0);
     const paid = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0);
-    const outstanding = invoices.filter(i => ['sent', 'overdue'].includes(i.status)).reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0);
+    const outstanding = invoices.filter(i => ['draft', 'sent', 'overdue'].includes(i.status)).reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0);
     return {
       id: c.id,
       companyName: c.companyName,

@@ -6,7 +6,11 @@ import { clientsApi, categoriesApi } from '../../api/index.js';
 const route = useRoute();
 const router = useRouter();
 const isEdit = computed(() => !!route.params.id);
-const form = ref({ companyName: '', clientCode: '', contactPerson: '', email: '', phone: '', address: '', invoicePrefix: '', invoiceStartNumber: '', quotationPrefix: '', quotationStartNumber: '', requiresRunSheet: false, categoryIds: [] });
+const form = ref({ companyName: '', clientCode: '', contactPerson: '', email: '', phone: '', address: '', invoicePrefix: '', invoiceStartNumber: '', quotationPrefix: '', quotationStartNumber: '', requiresRunSheet: false, bulkRunSheet: false, itemMatrix: false, categoryIds: [] });
+
+// The two invoice PDF formats are mutually exclusive — picking one clears the other
+function pickBulkRunSheet() { if (form.value.bulkRunSheet) form.value.itemMatrix = false; }
+function pickItemMatrix() { if (form.value.itemMatrix) form.value.bulkRunSheet = false; }
 const loading = ref(false);
 const error = ref('');
 
@@ -144,6 +148,17 @@ async function submit() {
             <span class="text-sm text-gray-700">Requires Run Sheet</span>
           </label>
           <p class="text-xs text-gray-400 mt-1 pl-6">When checked, invoices for this client show an optional "Run Sheet No." field on each line item.</p>
+          <label v-if="form.requiresRunSheet" class="flex items-center gap-2.5 cursor-pointer mt-3 pl-6">
+            <input v-model="form.bulkRunSheet" @change="pickBulkRunSheet" type="checkbox" class="w-4 h-4 rounded accent-blue-600"/>
+            <span class="text-sm text-gray-700">Bulk run-sheet invoice format</span>
+          </label>
+          <p v-if="form.requiresRunSheet" class="text-xs text-gray-400 mt-1 pl-12">Invoice PDF lists No / Date / Run Sheet / Item / Count / Total with a subtotal under each run sheet. Can be overridden per invoice.</p>
+
+          <label v-if="form.requiresRunSheet" class="flex items-center gap-2.5 cursor-pointer mt-3 pl-6">
+            <input v-model="form.itemMatrix" @change="pickItemMatrix" type="checkbox" class="w-4 h-4 rounded accent-blue-600"/>
+            <span class="text-sm text-gray-700">Item matrix invoice format</span>
+          </label>
+          <p v-if="form.requiresRunSheet" class="text-xs text-gray-400 mt-1 pl-12">Invoice PDF lists No / Date / Run Sheet, then one column per item (count delivered), then Total — with a period total row. Can be overridden per invoice.</p>
         </div>
       </div>
       <div class="flex gap-3 mt-7 pt-5 border-t border-gray-100">

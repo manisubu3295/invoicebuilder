@@ -32,7 +32,7 @@ build/
 # Generated PDF files
 backend/uploads/pdfs/
 
-# clean-prod.js backup dumps — may contain real client data
+# Daily DB backup dumps — contain real client data
 backend/backups/
 
 # PM2

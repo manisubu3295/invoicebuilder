@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { invoicesApi, clientsApi, itemCatalogApi, quotationsApi } from '../../api/index.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import LineItemEditor from '../../components/shared/LineItemEditor.vue';
+import RunSheetItemsEditor from '../../components/shared/RunSheetItemsEditor.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -13,7 +14,7 @@ const currency = computed(() => settingsStore.settings?.currency || 'SGD');
 const sym = computed(() => settingsStore.settings?.currencySymbol || 'S$');
 
 const form = ref({
-  clientId: '', categoryId: '', date: new Date().toISOString().split('T')[0], dueDate: '', notes: '', quotationId: null,
+  clientId: '', categoryId: '', date: new Date().toISOString().split('T')[0], dueDate: '', notes: '', quotationId: null, bulkRunSheet: false, itemMatrix: false,
   items: [{ sno: 1, itemType: 'service', jobDescription: '', fromDate: '', toDate: '', rate: '', rateType: 'per_week', deliveryDate: '', deliveryDates: [], quantity: 1, unitPrice: '', totalAmount: 0, runSheetNo: '' }],
 });
 const clients = ref([]);
@@ -23,8 +24,79 @@ const loadedQuotationNo = ref('');
 const loading = ref(false);
 const error = ref('');
 const nextNumber = ref('');
-const total = computed(() => form.value.items.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0));
 const showRunSheet = computed(() => !!clients.value.find(c => c.id === form.value.clientId)?.requiresRunSheet);
+
+// ── Run-sheet grouped entry (same pattern as the delivery form) ─────
+// For run-sheet clients, items are entered grouped per run sheet: type the
+// run sheet number + date once, add its items under it. Groups flatten into
+// regular delivery-type invoice items on submit, so nothing downstream
+// changes. Falls back to the standard editor whenever the invoice has
+// service items or multi-date delivery items (existing invoices/quotations
+// keep working untouched).
+const runSheetMode = ref(false);
+const runSheets = ref([]);
+
+function blankRsItem() {
+  return { _search: '', _catalogId: '', jobDescription: '', quantity: 1, unitPrice: '', notes: '' };
+}
+function blankRunSheetGroup() {
+  return { runSheetNo: '', date: form.value.date || new Date().toISOString().split('T')[0], items: [blankRsItem()] };
+}
+
+function groupItemsToRunSheets(items) {
+  const groups = [];
+  for (const i of items) {
+    const date = (Array.isArray(i.deliveryDates) && i.deliveryDates[0]) || i.deliveryDate || '';
+    const rsNo = (i.runSheetNo || '').trim();
+    let g = groups.find(x => x.runSheetNo === rsNo && x.date === date);
+    if (!g) { g = { runSheetNo: rsNo, date, items: [] }; groups.push(g); }
+    g.items.push({
+      _search: i.jobDescription,
+      _catalogId: catalog.value.find(c => c.name === i.jobDescription)?.id || '',
+      jobDescription: i.jobDescription,
+      quantity: parseFloat(i.quantity || 1),
+      unitPrice: parseFloat(i.unitPrice || 0),
+      notes: i.notes || '',
+    });
+  }
+  return groups.length ? groups : [blankRunSheetGroup()];
+}
+
+function flattenRunSheets() {
+  let sno = 0;
+  return runSheets.value.flatMap(g =>
+    g.items
+      .filter(i => i.jobDescription?.trim())
+      .map(i => {
+        const qty = parseFloat(i.quantity || 0);
+        const price = parseFloat(i.unitPrice || 0);
+        return {
+          sno: ++sno, itemType: 'delivery', jobDescription: i.jobDescription.trim(),
+          fromDate: '', toDate: '', rate: '', rateType: 'per_unit',
+          deliveryDate: g.date, deliveryDates: [g.date],
+          quantity: qty, unitPrice: price,
+          totalAmount: parseFloat((qty * price).toFixed(2)),
+          runSheetNo: g.runSheetNo.trim(), notes: i.notes || '',
+        };
+      })
+  );
+}
+
+// Decide which editor applies for the current client + items
+function evalRunSheetMode() {
+  const meaningful = (form.value.items || []).filter(i => i.jobDescription?.trim());
+  const eligible = showRunSheet.value
+    && meaningful.every(i => i.itemType === 'delivery')
+    && !meaningful.some(i => (i.deliveryDates?.length || 0) > 1);
+  if (eligible && !runSheetMode.value) runSheets.value = groupItemsToRunSheets(meaningful);
+  if (!eligible && runSheetMode.value) form.value.items = flattenRunSheets();
+  if (!eligible && !form.value.items.length) form.value.items = [{ sno: 1, itemType: 'service', jobDescription: '', fromDate: '', toDate: '', rate: '', rateType: 'per_week', deliveryDate: '', deliveryDates: [], quantity: 1, unitPrice: '', totalAmount: 0, runSheetNo: '' }];
+  runSheetMode.value = eligible;
+}
+
+const total = computed(() => runSheetMode.value
+  ? runSheets.value.reduce((s, g) => s + g.items.reduce((x, i) => x + parseFloat(i.quantity || 0) * parseFloat(i.unitPrice || 0), 0), 0)
+  : form.value.items.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0));
 const clientCategories = computed(() => clients.value.find(c => c.id === form.value.clientId)?.categories || []);
 function applyDefaultCategory() {
   const cats = clientCategories.value;
@@ -47,6 +119,7 @@ async function loadQuotation(quotationId) {
     };
   });
   loadedQuotationNo.value = q.quotationNo;
+  evalRunSheetMode();
 }
 
 function clearQuotation() {
@@ -60,7 +133,13 @@ async function refreshNextNumber() {
   catch { nextNumber.value = ''; }
 }
 watch(() => form.value.clientId, () => {
-  if (!isEdit.value) applyDefaultCategory();
+  if (!isEdit.value) {
+    applyDefaultCategory();
+    const c = clients.value.find(c => c.id === form.value.clientId);
+    form.value.bulkRunSheet = !!c?.bulkRunSheet;
+    form.value.itemMatrix = !!c?.itemMatrix;
+  }
+  evalRunSheetMode();
 });
 watch(() => form.value.categoryId, refreshNextNumber);
 
@@ -74,6 +153,7 @@ onMounted(async () => {
     const { data } = await invoicesApi.get(route.params.id);
     form.value = {
       clientId: data.clientId, categoryId: data.categoryId || '', date: data.date, dueDate: data.dueDate || '', notes: data.notes || '', quotationId: data.quotationId || null,
+      bulkRunSheet: !!data.bulkRunSheet, itemMatrix: !!data.itemMatrix,
       items: (data.items || []).map(i => {
         let deliveryDates = [];
         try { deliveryDates = i.deliveryDates ? JSON.parse(i.deliveryDates) : []; } catch {}
@@ -81,6 +161,7 @@ onMounted(async () => {
         return { ...i, itemType: i.itemType || 'service', deliveryDate: i.deliveryDate || '', deliveryDates, quantity: i.quantity || 1, unitPrice: i.unitPrice || '' };
       }),
     };
+    evalRunSheetMode();
   } else {
     await refreshNextNumber();
     quotationsApi.list().then(r => {
@@ -90,11 +171,24 @@ onMounted(async () => {
   }
 });
 
+// The two invoice PDF formats are mutually exclusive — picking one clears the other
+function pickBulkRunSheet() { if (form.value.bulkRunSheet) form.value.itemMatrix = false; }
+function pickItemMatrix() { if (form.value.itemMatrix) form.value.bulkRunSheet = false; }
+
 async function submit() {
   error.value = '';
   if (!isEdit.value && !form.value.categoryId) {
     error.value = 'Please select a category.';
     return;
+  }
+  if (runSheetMode.value) {
+    const filled = runSheets.value.filter(g => g.items.some(i => i.jobDescription?.trim()));
+    if (!filled.length) { error.value = 'Please enter at least one item.'; return; }
+    for (const g of filled) {
+      if (!g.runSheetNo?.trim()) { error.value = 'Please enter a Run Sheet No. for every run sheet.'; return; }
+      if (!g.date) { error.value = 'Please select a date for every run sheet.'; return; }
+    }
+    form.value.items = flattenRunSheets();
   }
   for (const item of form.value.items) {
     if (item.itemType === 'delivery') {
@@ -178,7 +272,25 @@ async function submit() {
       </div>
 
       <div class="section-label mb-3">Line Items</div>
-      <LineItemEditor v-model="form.items" :catalog="catalog" :show-run-sheet="showRunSheet" />
+      <template v-if="runSheetMode">
+        <p class="text-xs text-gray-400 dark:text-slate-500 mb-3">
+          This client uses run sheets — enter each run sheet number and date once, then add all its items below it.
+        </p>
+        <RunSheetItemsEditor :groups="runSheets" :catalog="catalog" />
+        <label class="flex items-center gap-2.5 cursor-pointer mt-4">
+          <input v-model="form.bulkRunSheet" @change="pickBulkRunSheet" type="checkbox" class="w-4 h-4 rounded accent-blue-600"/>
+          <span class="text-sm text-gray-700">Bulk run-sheet invoice format
+            <span class="text-xs text-gray-400 font-normal ml-1">— No / Date / Run Sheet / Item / Count / Total, subtotal per run sheet</span>
+          </span>
+        </label>
+        <label class="flex items-center gap-2.5 cursor-pointer mt-2">
+          <input v-model="form.itemMatrix" @change="pickItemMatrix" type="checkbox" class="w-4 h-4 rounded accent-blue-600"/>
+          <span class="text-sm text-gray-700">Item matrix invoice format
+            <span class="text-xs text-gray-400 font-normal ml-1">— No / Date / Run Sheet, one column per item, Total, with a period total row</span>
+          </span>
+        </label>
+      </template>
+      <LineItemEditor v-else v-model="form.items" :catalog="catalog" :show-run-sheet="showRunSheet" />
 
       <div class="flex justify-end mt-5 pt-5 border-t border-gray-100">
         <div class="text-right">

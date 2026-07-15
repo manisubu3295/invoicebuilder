@@ -7,6 +7,7 @@ const morgan = require('morgan');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { sequelize, Invoice } = require('./models');
+const logger = require('./config/logger');
 
 const app = express();
 const isProd = process.env.NODE_ENV === 'production';
@@ -17,8 +18,9 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// Request logging (combined in prod, dev format otherwise)
-app.use(morgan(isProd ? 'combined' : 'dev'));
+// Request logging — always writes to the daily rotated file in backend/logs/,
+// and additionally echoes to the console outside production (see logger.js)
+app.use(morgan('combined', { stream: logger.stream }));
 
 // Gzip compression
 app.use(compression());
@@ -90,7 +92,12 @@ if (isProd) {
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  logger.error(err.message, {
+    stack: err.stack,
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+  });
   res.status(err.status || 500).json({
     message: isProd ? 'Internal server error' : err.message,
   });
@@ -124,7 +131,7 @@ async function seedIfEmpty() {
       address: 'Singapore',
       isActive: true,
     });
-    console.log('Seeded: admin user (username: admin) + SMM client');
+    logger.info('Seeded: admin user (username: admin) + SMM client');
   }
 
   // Patch any users missing a username (schema upgrade from email-login system)
@@ -138,7 +145,7 @@ async function seedIfEmpty() {
       candidate = `${base}_${i++}`;
     }
     await u.update({ username: candidate });
-    console.log(`Assigned username "${candidate}" to user ${u.name}`);
+    logger.info(`Assigned username "${candidate}" to user ${u.name}`);
   }
 }
 
@@ -149,7 +156,7 @@ async function markOverdueInvoices() {
     { status: 'overdue' },
     { where: { status: 'sent', dueDate: { [Op.lt]: today } } }
   );
-  if (count[0] > 0) console.log(`Marked ${count[0]} invoice(s) as overdue`);
+  if (count[0] > 0) logger.info(`Marked ${count[0]} invoice(s) as overdue`);
 }
 
 async function startServer() {
@@ -158,32 +165,33 @@ async function startServer() {
     const weak = ['change_this', 'password', 'secret', 'your_', 'changeme'];
     const jwt = process.env.JWT_SECRET || '';
     if (jwt.length < 32 || weak.some(w => jwt.toLowerCase().includes(w))) {
-      console.warn('⚠️  WARNING: JWT_SECRET appears weak. Set a strong random secret in production.');
+      logger.warn('JWT_SECRET appears weak. Set a strong random secret in production.');
     }
     if (!process.env.DB_PASSWORD || process.env.DB_PASSWORD === 'password') {
-      console.warn('⚠️  WARNING: DB_PASSWORD is not set or is using the default value.');
+      logger.warn('DB_PASSWORD is not set or is using the default value.');
     }
   }
 
   try {
     // alter: { drop: false } adds new columns but never drops existing ones — safe for production
     await sequelize.sync({ alter: { drop: false } });
-    console.log('Database ready (PostgreSQL)');
+    logger.info('Database ready (PostgreSQL)');
     await require('./services/testMode').loadTestMode();
     await seedIfEmpty();
     await markOverdueInvoices();
     setInterval(markOverdueInvoices, 60 * 60 * 1000);
+    require('./services/backupService').scheduleDailyBackups();
 
     const server = app.listen(PORT, () =>
-      console.log(`AKB API running on http://localhost:${PORT} [${process.env.NODE_ENV || 'development'}]`)
+      logger.info(`AKB API running on http://localhost:${PORT} [${process.env.NODE_ENV || 'development'}]`)
     );
 
     // Graceful shutdown
     const shutdown = (signal) => {
-      console.log(`${signal} received. Shutting down gracefully…`);
+      logger.info(`${signal} received. Shutting down gracefully…`);
       server.close(() => {
         sequelize.close();
-        console.log('Server closed.');
+        logger.info('Server closed.');
         process.exit(0);
       });
       setTimeout(() => process.exit(1), 10000); // force-exit after 10s
@@ -192,16 +200,16 @@ async function startServer() {
     process.on('SIGINT',  () => shutdown('SIGINT'));
 
   } catch (err) {
-    console.error('Startup failed:', err.message);
+    logger.error('Startup failed', { message: err.message, stack: err.stack });
     process.exit(1);
   }
 }
 
 process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled Promise Rejection:', reason);
+  logger.error('Unhandled Promise Rejection', { reason: reason?.stack || reason });
 });
 process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err.message);
+  logger.error('Uncaught Exception', { message: err.message, stack: err.stack });
   process.exit(1);
 });
 

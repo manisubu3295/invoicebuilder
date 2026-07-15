@@ -102,6 +102,8 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
 
     const invoice = await createInvoiceWithNumber(clientId, {
       date, dueDate: dueDate || null, notes, quotationId: quotationId || null, jobId, totalAmount, status: 'draft', categoryId,
+      bulkRunSheet: !!req.body.bulkRunSheet,
+      itemMatrix: !!req.body.itemMatrix,
     });
 
     const invoiceItems = items.map((item, idx) => {
@@ -121,6 +123,7 @@ router.post('/', rbac('admin', 'staff'), async (req, res) => {
         unitPrice: num(item.unitPrice),
         totalAmount: num(item.totalAmount),
         runSheetNo: item.runSheetNo || null,
+        notes: item.notes || null,
       };
     });
     await InvoiceItem.bulkCreate(invoiceItems);
@@ -144,11 +147,25 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
     });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
 
-    const { date, dueDate, notes, items, status } = req.body;
+    const { date, dueDate, notes, items, status, bulkRunSheet, itemMatrix } = req.body;
+
+    // Only touch fields actually present in the request — this route also
+    // serves narrow updates like toggling bulkRunSheet/itemMatrix alone, and
+    // blindly passing every destructured field (most of them undefined)
+    // would wipe date/dueDate/notes/status via Sequelize treating
+    // `undefined` as "set this field", and the `|| null` fallbacks turn a
+    // missing dueDate into an explicit null.
+    const fields = {};
+    if (date !== undefined) fields.date = date;
+    if (dueDate !== undefined) fields.dueDate = dueDate || null;
+    if (notes !== undefined) fields.notes = notes;
+    if (status !== undefined) fields.status = status;
+    if (bulkRunSheet !== undefined) fields.bulkRunSheet = !!bulkRunSheet;
+    if (itemMatrix !== undefined) fields.itemMatrix = !!itemMatrix;
 
     if (items) {
       await InvoiceItem.destroy({ where: { invoiceId: invoice.id } });
-      const totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
+      fields.totalAmount = items.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
       const invoiceItems = items.map((item, idx) => {
         const dates = Array.isArray(item.deliveryDates) ? item.deliveryDates : [];
         return {
@@ -166,13 +183,12 @@ router.put('/:id', rbac('admin', 'staff'), async (req, res) => {
           unitPrice: num(item.unitPrice),
           totalAmount: num(item.totalAmount),
           runSheetNo: item.runSheetNo || null,
+          notes: item.notes || null,
         };
       });
       await InvoiceItem.bulkCreate(invoiceItems);
-      await invoice.update({ date, dueDate: dueDate || null, notes, status, totalAmount });
-    } else {
-      await invoice.update({ date, dueDate: dueDate || null, notes, status });
     }
+    if (Object.keys(fields).length) await invoice.update(fields);
 
     const full = await Invoice.findByPk(invoice.id, {
       include: [{ model: Client, as: 'client' }, { model: InvoiceItem, as: 'items' }],
@@ -247,6 +263,8 @@ router.post('/from-deliveries', rbac('admin', 'staff'), async (req, res) => {
       totalAmount, status: 'draft',
       invoiceType: 'delivery',
       periodStart, periodEnd, categoryId,
+      bulkRunSheet: !!req.body.bulkRunSheet,
+      itemMatrix: !!req.body.itemMatrix,
     });
 
     const invoiceItems = rows.map((row, idx) => ({

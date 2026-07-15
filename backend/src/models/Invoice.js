@@ -17,6 +17,13 @@ module.exports = (sequelize, DataTypes) => {
     emailSentAt: { type: DataTypes.DATE },
     paidDate: { type: DataTypes.DATEONLY },
     invoiceType: { type: DataTypes.STRING, defaultValue: 'service' }, // service | delivery
+    // Render the PDF in bulk run-sheet format (Srl No | Date | Run Sheet |
+    // Item | Count | Total, with a subtotal per run sheet)
+    bulkRunSheet: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    // Render the PDF in item-matrix format (Srl No | Date | Run Sheet |
+    // <one column per item> | Total, with a period total row). Takes
+    // priority over bulkRunSheet if both are somehow set.
+    itemMatrix: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     periodStart: { type: DataTypes.DATEONLY },
     periodEnd: { type: DataTypes.DATEONLY },
     isTest: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
