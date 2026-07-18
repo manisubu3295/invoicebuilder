@@ -25,23 +25,33 @@ app.use(morgan('combined', { stream: logger.stream }));
 // Gzip compression
 app.use(compression());
 
-// CORS — the website is served same-origin in prod so doesn't strictly need
-// this, but the Capacitor Android app bundles its own build and calls the
-// API cross-origin (from https://localhost), so CORS must be mounted in
-// prod too. Allow-list only the known web + Capacitor origins.
+// CORS — the website itself is same-origin in prod (this server serves both
+// the API and the built frontend), so browsers never need CORS headers for
+// it — but they still send an Origin header on many requests regardless,
+// and that must never be rejected. The Capacitor Android app is genuinely
+// cross-origin (calls this API from https://localhost), so CORS does need
+// to be mounted in prod for that. Explicitly allow-listed extra origins
+// (env-configured dev frontend, Capacitor) plus — critically — any request
+// whose Origin actually matches this server's own host, computed
+// per-request so it's correct regardless of domain/FRONTEND_URL config.
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
   'https://localhost', // Capacitor Android (androidScheme: 'https')
   'capacitor://localhost', // Capacitor iOS / older Android WebView origin scheme
 ];
-app.use(cors({
-  origin: (origin, callback) => {
-    // No Origin header (same-origin requests, curl, server-to-server) — allow
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-}));
+app.use((req, res, next) => {
+  const selfOrigin = `${req.protocol}://${req.get('host')}`;
+  cors({
+    origin: (origin, callback) => {
+      // No Origin header (same-origin requests, curl, server-to-server) — allow
+      if (!origin || origin === selfOrigin || allowedOrigins.includes(origin)) return callback(null, true);
+      const corsErr = new Error('Cross-origin request blocked');
+      corsErr.status = 403;
+      callback(corsErr);
+    },
+    credentials: true,
+  })(req, res, next);
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -108,8 +118,11 @@ app.use((err, req, res, next) => {
     url: req.originalUrl,
     ip: req.ip,
   });
+  // CORS rejections (err.status 403) are safe to surface as-is even in prod —
+  // unlike other errors, the message reveals nothing sensitive and hiding it
+  // just makes a deliberate rejection look like a server malfunction.
   res.status(err.status || 500).json({
-    message: isProd ? 'Internal server error' : err.message,
+    message: (isProd && err.status !== 403) ? 'Internal server error' : err.message,
   });
 });
 
