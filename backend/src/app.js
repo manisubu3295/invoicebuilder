@@ -32,19 +32,28 @@ app.use(compression());
 // cross-origin (calls this API from https://localhost), so CORS does need
 // to be mounted in prod for that. Explicitly allow-listed extra origins
 // (env-configured dev frontend, Capacitor) plus — critically — any request
-// whose Origin actually matches this server's own host, computed
-// per-request so it's correct regardless of domain/FRONTEND_URL config.
+// whose Origin actually matches this server's own host.
+//
+// Compared by host only (not full protocol://host) because production runs
+// behind a reverse proxy (nginx) that terminates HTTPS and forwards to Node
+// over plain HTTP — req.protocol reads back as 'http' even though the
+// browser's real Origin is https://..., so a scheme-inclusive comparison
+// fails here. req.get('host') reflects the original Host header the proxy
+// forwards, so it's reliable regardless of proxy TLS setup.
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
   'https://localhost', // Capacitor Android (androidScheme: 'https')
   'capacitor://localhost', // Capacitor iOS / older Android WebView origin scheme
 ];
 app.use((req, res, next) => {
-  const selfOrigin = `${req.protocol}://${req.get('host')}`;
+  const selfHost = req.get('host');
   cors({
     origin: (origin, callback) => {
       // No Origin header (same-origin requests, curl, server-to-server) — allow
-      if (!origin || origin === selfOrigin || allowedOrigins.includes(origin)) return callback(null, true);
+      if (!origin) return callback(null, true);
+      let originHost;
+      try { originHost = new URL(origin).host; } catch { originHost = null; }
+      if (originHost === selfHost || allowedOrigins.includes(origin)) return callback(null, true);
       const corsErr = new Error('Cross-origin request blocked');
       corsErr.status = 403;
       callback(corsErr);
