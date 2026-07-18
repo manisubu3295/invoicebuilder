@@ -657,11 +657,12 @@ onMounted(async () => {
 
         <!-- Payment Details + Signature -->
         <div class="flex justify-between items-start pt-5 border-t border-gray-200 gap-8">
-          <div v-if="s.bankName || s.bankAccountNo" class="text-xs space-y-1">
+          <div v-if="s.bankName || s.bankAccountNo || s.paynowNumber" class="text-xs space-y-1">
             <div class="font-semibold text-slate-700 uppercase tracking-wide mb-2">Payment Details</div>
             <div v-if="s.bankAccountName"><span class="text-gray-500">Account Name: </span><span class="font-medium">{{ s.bankAccountName }}</span></div>
             <div v-if="s.bankName"><span class="text-gray-500">Bank: </span><span class="font-medium">{{ s.bankName }}</span></div>
             <div v-if="s.bankAccountNo"><span class="text-gray-500">Account No: </span><span class="font-medium">{{ s.bankAccountNo }}</span></div>
+            <div v-if="s.paynowNumber"><span class="text-gray-500">PayNow: </span><span class="font-medium">{{ s.paynowNumber }}</span></div>
             <div class="text-gray-400 italic mt-2">Payment due within {{ s.paymentTermsDays || 30 }} days.<br/>Please quote invoice number when paying.</div>
           </div>
           <div v-else class="text-xs text-gray-400 italic">Payment due within {{ s.paymentTermsDays || 30 }} days of invoice date.</div>

@@ -16,6 +16,7 @@ async function sendInvoiceEmail({ to, clientName, invoiceNo, pdfPath, settings =
     settings.bankAccountName ? `<tr><td style="padding:4px 8px"><strong>Account Name:</strong></td><td>${settings.bankAccountName}</td></tr>` : '',
     settings.bankName        ? `<tr><td style="padding:4px 8px"><strong>Bank:</strong></td><td>${settings.bankName}</td></tr>` : '',
     settings.bankAccountNo   ? `<tr><td style="padding:4px 8px"><strong>Account No:</strong></td><td>${settings.bankAccountNo}</td></tr>` : '',
+    settings.paynowNumber    ? `<tr><td style="padding:4px 8px"><strong>PayNow:</strong></td><td>${settings.paynowNumber}</td></tr>` : '',
   ].filter(Boolean).join('');
   const bankSection = bankRows
     ? `<p>Kindly arrange payment at your earliest convenience to the following bank account:</p><table style="border-collapse:collapse;width:100%">${bankRows}</table><br/>`

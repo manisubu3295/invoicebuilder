@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
 
 const ALLOWED_FIELDS = [
   'companyName', 'registrationNo', 'address', 'phone', 'email', 'website',
-  'bankName', 'bankAccountNo', 'bankAccountName',
+  'bankName', 'bankAccountNo', 'bankAccountName', 'paynowNumber',
   'currency', 'currencySymbol', 'paymentTermsDays', 'signatoryName', 'logoText',
   'logoImage', 'sealImage', 'signatureImage',
   'invoicePrefix', 'invoiceStartNumber', 'quotationPrefix', 'quotationStartNumber',

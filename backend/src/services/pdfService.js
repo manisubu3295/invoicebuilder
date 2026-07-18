@@ -351,12 +351,13 @@ function buildInvoiceHtml(invoice, client, items, settings = {}) {
   <!-- Signature + Payment Details side by side -->
   <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:32px;gap:32px;">
 
-    ${(settings.bankName || settings.bankAccountNo) ? `
+    ${(settings.bankName || settings.bankAccountNo || settings.paynowNumber) ? `
     <div style="font-size:11px;line-height:1.9;">
       <div style="font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#374151;margin-bottom:6px;font-size:10.5px;">Payment Details</div>
       ${settings.bankAccountName ? `<div><span style="color:#6b7280;">Account Name: </span><strong>${settings.bankAccountName}</strong></div>` : ''}
       ${settings.bankName ? `<div><span style="color:#6b7280;">Bank: </span><strong>${settings.bankName}</strong></div>` : ''}
       ${settings.bankAccountNo ? `<div><span style="color:#6b7280;">Account No: </span><strong>${settings.bankAccountNo}</strong></div>` : ''}
+      ${settings.paynowNumber ? `<div><span style="color:#6b7280;">PayNow: </span><strong>${settings.paynowNumber}</strong></div>` : ''}
       <div style="font-size:10.5px;color:#6b7280;margin-top:6px;font-style:italic;">
         Payment due within ${termsDays} days of invoice date.<br/>
         Please quote invoice number when making payment.
@@ -521,12 +522,13 @@ function buildDeliveryInvoiceHtml(invoice, client, items, settings = {}) {
 
   <!-- Payment Details + Signature -->
   <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:32px;gap:32px;">
-    ${(settings.bankName || settings.bankAccountNo) ? `
+    ${(settings.bankName || settings.bankAccountNo || settings.paynowNumber) ? `
     <div style="font-size:11px;line-height:1.9;">
       <div style="font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#374151;margin-bottom:6px;font-size:10.5px;">Payment Details</div>
       ${settings.bankAccountName ? `<div><span style="color:#6b7280;">Account Name: </span><strong>${settings.bankAccountName}</strong></div>` : ''}
       ${settings.bankName ? `<div><span style="color:#6b7280;">Bank: </span><strong>${settings.bankName}</strong></div>` : ''}
       ${settings.bankAccountNo ? `<div><span style="color:#6b7280;">Account No: </span><strong>${settings.bankAccountNo}</strong></div>` : ''}
+      ${settings.paynowNumber ? `<div><span style="color:#6b7280;">PayNow: </span><strong>${settings.paynowNumber}</strong></div>` : ''}
       <div style="font-size:10.5px;color:#6b7280;margin-top:6px;font-style:italic;">
         Payment due within ${termsDays} days of invoice date.<br/>
         Please quote invoice number when making payment.
@@ -681,12 +683,13 @@ function buildBulkRunSheetInvoiceHtml(invoice, client, items, settings = {}) {
 
   <!-- Payment Details + Signature -->
   <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:32px;gap:32px;">
-    ${(settings.bankName || settings.bankAccountNo) ? `
+    ${(settings.bankName || settings.bankAccountNo || settings.paynowNumber) ? `
     <div style="font-size:11px;line-height:1.9;">
       <div style="font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#374151;margin-bottom:6px;font-size:10.5px;">Payment Details</div>
       ${settings.bankAccountName ? `<div><span style="color:#6b7280;">Account Name: </span><strong>${settings.bankAccountName}</strong></div>` : ''}
       ${settings.bankName ? `<div><span style="color:#6b7280;">Bank: </span><strong>${settings.bankName}</strong></div>` : ''}
       ${settings.bankAccountNo ? `<div><span style="color:#6b7280;">Account No: </span><strong>${settings.bankAccountNo}</strong></div>` : ''}
+      ${settings.paynowNumber ? `<div><span style="color:#6b7280;">PayNow: </span><strong>${settings.paynowNumber}</strong></div>` : ''}
       <div style="font-size:10.5px;color:#6b7280;margin-top:6px;font-style:italic;">
         Payment due within ${termsDays} days of invoice date.<br/>
         Please quote invoice number when making payment.
@@ -858,12 +861,13 @@ function buildItemMatrixInvoiceHtml(invoice, client, items, settings = {}) {
 
   <!-- Payment Details + Signature -->
   <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:32px;gap:32px;">
-    ${(settings.bankName || settings.bankAccountNo) ? `
+    ${(settings.bankName || settings.bankAccountNo || settings.paynowNumber) ? `
     <div style="font-size:11px;line-height:1.9;">
       <div style="font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#374151;margin-bottom:6px;font-size:10.5px;">Payment Details</div>
       ${settings.bankAccountName ? `<div><span style="color:#6b7280;">Account Name: </span><strong>${settings.bankAccountName}</strong></div>` : ''}
       ${settings.bankName ? `<div><span style="color:#6b7280;">Bank: </span><strong>${settings.bankName}</strong></div>` : ''}
       ${settings.bankAccountNo ? `<div><span style="color:#6b7280;">Account No: </span><strong>${settings.bankAccountNo}</strong></div>` : ''}
+      ${settings.paynowNumber ? `<div><span style="color:#6b7280;">PayNow: </span><strong>${settings.paynowNumber}</strong></div>` : ''}
       <div style="font-size:10.5px;color:#6b7280;margin-top:6px;font-style:italic;">
         Payment due within ${termsDays} days of invoice date.<br/>
         Please quote invoice number when making payment.
@@ -1060,12 +1064,13 @@ function buildItemAmountMatrixInvoiceHtml(invoice, client, items, settings = {},
 
   <!-- Payment Details + Signature -->
   <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:32px;gap:32px;">
-    ${(settings.bankName || settings.bankAccountNo) ? `
+    ${(settings.bankName || settings.bankAccountNo || settings.paynowNumber) ? `
     <div style="font-size:11px;line-height:1.9;">
       <div style="font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#374151;margin-bottom:6px;font-size:10.5px;">Payment Details</div>
       ${settings.bankAccountName ? `<div><span style="color:#6b7280;">Account Name: </span><strong>${settings.bankAccountName}</strong></div>` : ''}
       ${settings.bankName ? `<div><span style="color:#6b7280;">Bank: </span><strong>${settings.bankName}</strong></div>` : ''}
       ${settings.bankAccountNo ? `<div><span style="color:#6b7280;">Account No: </span><strong>${settings.bankAccountNo}</strong></div>` : ''}
+      ${settings.paynowNumber ? `<div><span style="color:#6b7280;">PayNow: </span><strong>${settings.paynowNumber}</strong></div>` : ''}
       <div style="font-size:10.5px;color:#6b7280;margin-top:6px;font-style:italic;">
         Payment due within ${termsDays} days of invoice date.<br/>
         Please quote invoice number when making payment.

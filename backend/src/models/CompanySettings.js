@@ -12,6 +12,7 @@ module.exports = (sequelize) => {
     bankName: { type: DataTypes.STRING, allowNull: true },
     bankAccountNo: { type: DataTypes.STRING, allowNull: true },
     bankAccountName: { type: DataTypes.STRING, allowNull: true },
+    paynowNumber: { type: DataTypes.STRING, allowNull: true },
     currency: { type: DataTypes.STRING, defaultValue: 'SGD' },
     currencySymbol: { type: DataTypes.STRING, defaultValue: 'S$' },
     paymentTermsDays: { type: DataTypes.INTEGER, defaultValue: 30 },

@@ -13,7 +13,7 @@ const saving = ref(false);
 const toast = ref(null);
 const form = ref({
   companyName: '', registrationNo: '', address: '', phone: '', email: '', website: '',
-  bankName: '', bankAccountNo: '', bankAccountName: '',
+  bankName: '', bankAccountNo: '', bankAccountName: '', paynowNumber: '',
   currency: 'SGD', currencySymbol: 'S$', paymentTermsDays: 30, signatoryName: '', logoText: '',
   logoImage: null, sealImage: null, signatureImage: null,
   invoicePrefix: 'INV', invoiceStartNumber: 1,
@@ -177,6 +177,7 @@ onMounted(async () => {
           <div class="input-group"><label class="input-label">Account Number</label><input v-model="form.bankAccountNo" class="input-field" placeholder="123-456789-0"/></div>
           <div class="input-group"><label class="input-label">Account Name</label><input v-model="form.bankAccountName" class="input-field"/></div>
         </div>
+        <div class="input-group"><label class="input-label">PayNow Number</label><input v-model="form.paynowNumber" class="input-field" placeholder="UEN or mobile number"/></div>
         <div class="input-group">
           <label class="input-label">Default Payment Terms (days)</label>
           <input v-model.number="form.paymentTermsDays" type="number" min="1" class="input-field w-28"/>
