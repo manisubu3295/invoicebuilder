@@ -1,0 +1,8 @@
+{
+  "appId": "com.akbtransport.app",
+  "appName": "AKB Transport",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
