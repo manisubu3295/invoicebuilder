@@ -174,6 +174,19 @@ function buildInvoiceRows(items, symbol, cur, payments = [], hasRunSheet = false
   return rowHtml + totalRows;
 }
 
+// Appended to a totals table when settings.showOutstandingOnInvoice is on —
+// clientOutstanding is the client's total unpaid balance across all their
+// invoices (computed by the caller), separate from this invoice's own
+// BALANCE DUE row above it.
+function outstandingRowHtml(clientOutstanding, sym, colspan) {
+  if (clientOutstanding == null) return '';
+  return `
+    <tr style="background:#fef2f2;">
+      <td colspan="${colspan}" style="border:1px solid #e5e7eb;padding:9px 10px;text-align:right;color:#b91c1c;font-size:11px;">Total Outstanding (All Invoices)</td>
+      <td style="border:1px solid #e5e7eb;padding:9px 10px;text-align:right;color:#b91c1c;font-size:11px;font-weight:600;">${formatCurrency(clientOutstanding, sym)}</td>
+    </tr>`;
+}
+
 const baseStyle = `
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #1f2937; padding: 48px; line-height: 1.5; }
@@ -286,12 +299,13 @@ function buildQuotationHtml(quotation, client, items, settings = {}) {
 </body></html>`;
 }
 
-function buildInvoiceHtml(invoice, client, items, settings = {}) {
+function buildInvoiceHtml(invoice, client, items, settings = {}, clientOutstanding = null) {
   const sym = settings.currencySymbol || 'S$';
   const cur = settings.currency || 'SGD';
   const termsDays = settings.paymentTermsDays || 30;
   const addrLines = (settings.address || '').split('\n').filter(Boolean).map(l => `<div>${l}</div>`).join('');
   const hasRunSheet = items.some(i => i.runSheetNo);
+  const runSheetColspan = hasRunSheet ? 5 : 4;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
 
@@ -340,7 +354,7 @@ function buildInvoiceHtml(invoice, client, items, settings = {}) {
       <th style="width:16%;text-align:right;">RATE</th>
       <th style="width:17%;text-align:right;">AMOUNT (${cur})</th>
     </tr></thead>
-    <tbody>${buildInvoiceRows(items, sym, cur, invoice.payments || [], hasRunSheet)}</tbody>
+    <tbody>${buildInvoiceRows(items, sym, cur, invoice.payments || [], hasRunSheet)}${outstandingRowHtml(clientOutstanding, sym, runSheetColspan)}</tbody>
   </table>
 
   ${invoice.notes ? `
@@ -417,7 +431,7 @@ function clubDeliveryItems(items) {
       || (a.jobDescription || '').localeCompare(b.jobDescription || ''));
 }
 
-function buildDeliveryInvoiceHtml(invoice, client, items, settings = {}) {
+function buildDeliveryInvoiceHtml(invoice, client, items, settings = {}, clientOutstanding = null) {
   const sym = settings.currencySymbol || 'S$';
   const cur = settings.currency || 'SGD';
   const termsDays = settings.paymentTermsDays || 30;
@@ -456,7 +470,7 @@ function buildDeliveryInvoiceHtml(invoice, client, items, settings = {}) {
     <tr style="background:#111827;color:#fff;">
       <td colspan="${runSheetColspan}" style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;letter-spacing:1px;">${balance === 0 ? 'PAID IN FULL' : `BALANCE DUE (${cur})`}</td>
       <td style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(balance, sym)}</td>
-    </tr>`;
+    </tr>${outstandingRowHtml(clientOutstanding, sym, runSheetColspan)}`;
 
   const period = invoice.periodStart && invoice.periodEnd
     ? `${formatDate(invoice.periodStart)} – ${formatDate(invoice.periodEnd)}`
@@ -550,7 +564,7 @@ function buildDeliveryInvoiceHtml(invoice, client, items, settings = {}) {
 // Total, with a subtotal row under each run sheet, so the client ticks off
 // one run sheet at a time. Used when invoice.bulkRunSheet is set; the
 // standard layouts are untouched otherwise.
-function buildBulkRunSheetInvoiceHtml(invoice, client, items, settings = {}) {
+function buildBulkRunSheetInvoiceHtml(invoice, client, items, settings = {}, clientOutstanding = null) {
   const sym = settings.currencySymbol || 'S$';
   const cur = settings.currency || 'SGD';
   const termsDays = settings.paymentTermsDays || 30;
@@ -617,7 +631,7 @@ function buildBulkRunSheetInvoiceHtml(invoice, client, items, settings = {}) {
     <tr style="background:#111827;color:#fff;">
       <td colspan="5" style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;letter-spacing:1px;">${balance === 0 ? 'PAID IN FULL' : `BALANCE DUE (${cur})`}</td>
       <td style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(balance, sym)}</td>
-    </tr>`;
+    </tr>${outstandingRowHtml(clientOutstanding, sym, 5)}`;
 
   const period = invoice.periodStart && invoice.periodEnd
     ? `${formatDate(invoice.periodStart)} – ${formatDate(invoice.periodEnd)}`
@@ -716,7 +730,7 @@ function buildBulkRunSheetInvoiceHtml(invoice, client, items, settings = {}) {
 // landscape since the column count is open-ended. Used when
 // invoice.itemMatrix is set; standard and bulk-run-sheet layouts are
 // untouched otherwise.
-function buildItemMatrixInvoiceHtml(invoice, client, items, settings = {}) {
+function buildItemMatrixInvoiceHtml(invoice, client, items, settings = {}, clientOutstanding = null) {
   const sym = settings.currencySymbol || 'S$';
   const cur = settings.currency || 'SGD';
   const termsDays = settings.paymentTermsDays || 30;
@@ -796,7 +810,7 @@ function buildItemMatrixInvoiceHtml(invoice, client, items, settings = {}) {
     <tr style="background:#111827;color:#fff;">
       <td colspan="${trailerColspan}" style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;letter-spacing:1px;">${balance === 0 ? 'PAID IN FULL' : `BALANCE DUE (${cur})`}</td>
       <td style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(balance, sym)}</td>
-    </tr>`;
+    </tr>${outstandingRowHtml(clientOutstanding, sym, trailerColspan)}`;
 
   const period = invoice.periodStart && invoice.periodEnd
     ? `${formatDate(invoice.periodStart)} – ${formatDate(invoice.periodEnd)}`
@@ -894,7 +908,7 @@ function buildItemMatrixInvoiceHtml(invoice, client, items, settings = {}) {
 // delivery-type items). A final row sums each item's count and amount
 // columns plus the grand total. Rendered landscape, same as item-matrix.
 // Used when invoice.itemAmountMatrix is set; all other layouts untouched.
-function buildItemAmountMatrixInvoiceHtml(invoice, client, items, settings = {}, catalogPriceMap = null) {
+function buildItemAmountMatrixInvoiceHtml(invoice, client, items, settings = {}, catalogPriceMap = null, clientOutstanding = null) {
   const sym = settings.currencySymbol || 'S$';
   const cur = settings.currency || 'SGD';
   const termsDays = settings.paymentTermsDays || 30;
@@ -994,7 +1008,7 @@ function buildItemAmountMatrixInvoiceHtml(invoice, client, items, settings = {},
     <tr style="background:#111827;color:#fff;">
       <td colspan="${trailerColspan}" style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;letter-spacing:1px;">${balance === 0 ? 'PAID IN FULL' : `BALANCE DUE (${cur})`}</td>
       <td style="border:1px solid #111827;padding:11px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(balance, sym)}</td>
-    </tr>`;
+    </tr>${outstandingRowHtml(clientOutstanding, sym, trailerColspan)}`;
 
   const period = invoice.periodStart && invoice.periodEnd
     ? `${formatDate(invoice.periodStart)} – ${formatDate(invoice.periodEnd)}`
@@ -1124,16 +1138,16 @@ async function generatePDFBuffer(html) {
   return buffer;
 }
 
-async function generateInvoicePDF(invoice, client, items, settings, catalogPriceMap = null) {
+async function generateInvoicePDF(invoice, client, items, settings, catalogPriceMap = null, clientOutstanding = null) {
   const html = invoice.itemAmountMatrix
-    ? buildItemAmountMatrixInvoiceHtml(invoice, client, items, settings, catalogPriceMap)
+    ? buildItemAmountMatrixInvoiceHtml(invoice, client, items, settings, catalogPriceMap, clientOutstanding)
     : invoice.itemMatrix
-      ? buildItemMatrixInvoiceHtml(invoice, client, items, settings)
+      ? buildItemMatrixInvoiceHtml(invoice, client, items, settings, clientOutstanding)
       : invoice.bulkRunSheet
-        ? buildBulkRunSheetInvoiceHtml(invoice, client, items, settings)
+        ? buildBulkRunSheetInvoiceHtml(invoice, client, items, settings, clientOutstanding)
         : invoice.invoiceType === 'delivery'
-          ? buildDeliveryInvoiceHtml(invoice, client, items, settings)
-          : buildInvoiceHtml(invoice, client, items, settings);
+          ? buildDeliveryInvoiceHtml(invoice, client, items, settings, clientOutstanding)
+          : buildInvoiceHtml(invoice, client, items, settings, clientOutstanding);
   const filename = `Invoice-${invoice.invoiceNo.replace(/\//g, '-')}-${Date.now()}.pdf`;
   return generatePDF(html, filename, { landscape: !!(invoice.itemAmountMatrix || invoice.itemMatrix) });
 }

@@ -22,6 +22,30 @@ async function buildCatalogPriceMap() {
   return new Map(cat.map(c => [c.name.trim().toLowerCase(), parseFloat(c.unitPrice)]));
 }
 
+// Sum of (totalAmount - paid) across all of a client's issued-but-unpaid
+// invoices (sent/overdue — drafts aren't billed yet, so they don't count),
+// clamped at 0 per invoice — printed on the invoice PDF when
+// settings.showOutstandingOnInvoice is on. includeInvoiceId always counts
+// regardless of status: the invoice currently being rendered/emailed is
+// still 'draft' at this point in the send-email flow (status flips to
+// 'sent' only after the email goes out), but it belongs in its own total.
+async function getClientOutstanding(clientId, isTest, includeInvoiceId) {
+  const invoices = await Invoice.findAll({
+    where: {
+      clientId, isTest,
+      [Op.or]: [
+        { status: { [Op.in]: ['sent', 'overdue'] } },
+        ...(includeInvoiceId ? [{ id: includeInvoiceId }] : []),
+      ],
+    },
+    include: [{ model: Payment, as: 'payments' }],
+  });
+  return invoices.reduce((sum, inv) => {
+    const paid = (inv.payments || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    return sum + Math.max(0, parseFloat(inv.totalAmount || 0) - paid);
+  }, 0);
+}
+
 router.get('/', async (req, res) => {
   try {
     const { status, clientId, driverId, vehicleId, fromDate, toDate } = req.query;
@@ -228,7 +252,10 @@ router.get('/:id/pdf', async (req, res) => {
 
     const settings = await CompanySettings.findOne() || {};
     const catalogPriceMap = invoice.itemAmountMatrix ? await buildCatalogPriceMap() : null;
-    const pdfPath = await generateInvoicePDF(invoice, invoice.client, invoice.items, settings, catalogPriceMap);
+    const clientOutstanding = settings.showOutstandingOnInvoice
+      ? await getClientOutstanding(invoice.clientId, invoice.isTest, invoice.id)
+      : null;
+    const pdfPath = await generateInvoicePDF(invoice, invoice.client, invoice.items, settings, catalogPriceMap, clientOutstanding);
     await invoice.update({ pdfPath });
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -250,7 +277,10 @@ router.post('/:id/send-email', rbac('admin', 'staff'), async (req, res) => {
 
     const settings = await CompanySettings.findOne() || {};
     const catalogPriceMap = invoice.itemAmountMatrix ? await buildCatalogPriceMap() : null;
-    const pdfPath = await generateInvoicePDF(invoice, invoice.client, invoice.items, settings, catalogPriceMap);
+    const clientOutstanding = settings.showOutstandingOnInvoice
+      ? await getClientOutstanding(invoice.clientId, invoice.isTest, invoice.id)
+      : null;
+    const pdfPath = await generateInvoicePDF(invoice, invoice.client, invoice.items, settings, catalogPriceMap, clientOutstanding);
     await invoice.update({ pdfPath });
 
     await sendInvoiceEmail({

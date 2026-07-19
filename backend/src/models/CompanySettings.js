@@ -26,5 +26,6 @@ module.exports = (sequelize) => {
     quotationPrefix: { type: DataTypes.STRING(20), defaultValue: 'QUO' },
     quotationStartNumber: { type: DataTypes.INTEGER, defaultValue: 1 },
     testModeEnabled: { type: DataTypes.BOOLEAN, defaultValue: false },
+    showOutstandingOnInvoice: { type: DataTypes.BOOLEAN, defaultValue: false },
   }, { tableName: 'CompanySettings' });
 };

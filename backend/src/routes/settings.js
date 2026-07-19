@@ -26,7 +26,7 @@ const ALLOWED_FIELDS = [
   'currency', 'currencySymbol', 'paymentTermsDays', 'signatoryName', 'logoText',
   'logoImage', 'sealImage', 'signatureImage',
   'invoicePrefix', 'invoiceStartNumber', 'quotationPrefix', 'quotationStartNumber',
-  'testModeEnabled',
+  'testModeEnabled', 'showOutstandingOnInvoice',
 ];
 
 router.put('/', rbac('admin'), async (req, res) => {

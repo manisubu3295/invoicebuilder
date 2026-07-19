@@ -19,6 +19,7 @@ const form = ref({
   invoicePrefix: 'INV', invoiceStartNumber: 1,
   quotationPrefix: 'QUO', quotationStartNumber: 1,
   testModeEnabled: false,
+  showOutstandingOnInvoice: false,
 });
 
 function pickImage(field) {
@@ -214,6 +215,16 @@ onMounted(async () => {
             <input v-model.number="form.quotationStartNumber" type="number" min="1" class="input-field w-28"/>
           </div>
         </div>
+      </div>
+
+      <div class="mt-6 pt-5 border-t border-gray-100 dark:border-slate-700">
+        <label class="flex items-start gap-2.5 cursor-pointer">
+          <input v-model="form.showOutstandingOnInvoice" type="checkbox" class="w-4 h-4 mt-0.5 rounded accent-amber-600"/>
+          <span>
+            <span class="text-sm font-semibold text-gray-700 dark:text-slate-200">Show Total Outstanding on Invoice PDF</span>
+            <p class="text-xs text-gray-500 dark:text-slate-400 mt-0.5">When enabled, every invoice PDF prints a "Total Outstanding (All Invoices)" line showing the client's combined unpaid balance across all their invoices, in addition to this invoice's own balance due.</p>
+          </span>
+        </label>
       </div>
 
       <div v-if="canToggleTestMode" class="mt-6 pt-5 border-t border-gray-100 dark:border-slate-700">
