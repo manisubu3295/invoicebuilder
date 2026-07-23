@@ -1177,38 +1177,42 @@ function buildCompanyHeader(settings) {
   </div>`;
 }
 
-async function generateSOAPDF(client, invoices, company) {
+async function generateSOAPDF(client, soaData, company) {
   const sym = (company && company.currencySymbol) || 'S$';
   const today = formatDate(new Date().toISOString().slice(0, 10));
+  const { ledger = [], period = {}, summary = {}, aging = {} } = soaData || {};
+  const { openingBalance = 0, totalInvoicedInPeriod = 0, totalPaidInPeriod = 0, closingBalance = 0 } = summary;
 
-  const totalBilled = invoices.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0);
-  const totalPaid = invoices.reduce((s, i) => {
-    return s + (i.payments || []).reduce((ps, p) => ps + parseFloat(p.amount || 0), 0);
-  }, 0);
-  const balance = totalBilled - totalPaid;
+  const periodLabel = `${period.fromDate ? formatDate(period.fromDate) : 'Account start'} – ${period.toDate ? formatDate(period.toDate) : today}`;
+  const statusLabel = period.status && period.status !== 'all'
+    ? ({ sent: 'Pending', overdue: 'Overdue', paid: 'Paid' }[period.status] || period.status)
+    : 'All';
 
-  const rows = invoices.map(inv => {
-    const paid = (inv.payments || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
-    const invBalance = parseFloat(inv.totalAmount || 0) - paid;
-    const statusColor = inv.status === 'paid' ? '#16a34a' : inv.status === 'overdue' ? '#dc2626' : '#d97706';
+  const ledgerRows = ledger.map(row => {
+    const desc = row.type === 'invoice'
+      ? `Invoice${row.status ? ` (${row.status})` : ''}`
+      : 'Payment Received';
     return `<tr>
-      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;font-weight:600;">${inv.invoiceNo}</td>
-      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;">${formatDate(inv.date)}</td>
-      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:center;">${inv.dueDate ? formatDate(inv.dueDate) : '—'}</td>
-      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;">${formatCurrency(inv.totalAmount, sym)}</td>
-      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;color:#16a34a;">${formatCurrency(paid, sym)}</td>
-      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:11px;text-align:right;font-weight:${invBalance > 0 ? 'bold' : 'normal'};color:${invBalance > 0 ? '#dc2626' : '#374151'};">${formatCurrency(invBalance, sym)}</td>
-      <td style="border:1px solid #e5e7eb;padding:9px 10px;font-size:10px;text-align:center;">
-        <span style="background:${statusColor}1a;color:${statusColor};padding:2px 8px;border-radius:10px;font-weight:600;text-transform:uppercase;">${inv.status}</span>
-      </td>
+      <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:11px;">${formatDate(row.date)}</td>
+      <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:11px;font-weight:600;">${row.ref}</td>
+      <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:11px;">${desc}</td>
+      <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:11px;text-align:right;">${row.debit ? formatCurrency(row.debit, sym) : ''}</td>
+      <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:11px;text-align:right;color:#16a34a;">${row.credit ? formatCurrency(row.credit, sym) : ''}</td>
+      <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:11px;text-align:right;font-weight:600;">${formatCurrency(row.balance, sym)}</td>
     </tr>`;
   }).join('');
+
+  const agingCell = (label, val) => `
+    <td style="border:1px solid #e5e7eb;padding:8px 10px;text-align:center;">
+      <div style="font-size:9.5px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+      <div style="font-size:12px;font-weight:600;margin-top:2px;${val > 0 ? 'color:#dc2626;' : ''}">${formatCurrency(val, sym)}</div>
+    </td>`;
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>${baseStyle}</style></head><body>
   ${buildCompanyHeader(company || {})}
   <div style="border-top:2.5px solid #111827;border-bottom:1px solid #e5e7eb;padding:12px 0;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;">
     <div style="font-size:20px;font-weight:bold;color:#111827;letter-spacing:3px;">STATEMENT OF ACCOUNT</div>
-    <div style="font-size:11px;text-align:right;color:#6b7280;">As at ${today}</div>
+    <div style="font-size:11px;text-align:right;color:#6b7280;">Period: ${periodLabel}${period.status && period.status !== 'all' ? ` &nbsp;|&nbsp; Status: ${statusLabel}` : ''}</div>
   </div>
   <div style="margin-bottom:18px;padding:12px 14px;background:#f9fafb;border-radius:6px;font-size:11px;">
     <div style="font-weight:bold;font-size:13px;color:#111827;margin-bottom:4px;">${client.companyName}</div>
@@ -1217,27 +1221,43 @@ async function generateSOAPDF(client, invoices, company) {
     ${client.email ? `<div style="color:#6b7280;">${client.email}</div>` : ''}
     ${client.phone ? `<div style="color:#6b7280;">${client.phone}</div>` : ''}
   </div>
-  <table style="margin-bottom:20px;">
-    <thead><tr>
-      <th style="text-align:left;">Invoice No</th>
-      <th style="text-align:center;width:13%;">Date</th>
-      <th style="text-align:center;width:13%;">Due Date</th>
-      <th style="text-align:right;width:14%;">Amount</th>
-      <th style="text-align:right;width:14%;">Paid</th>
-      <th style="text-align:right;width:14%;">Balance</th>
-      <th style="text-align:center;width:10%;">Status</th>
-    </tr></thead>
-    <tbody>
-      ${rows || '<tr><td colspan="7" style="text-align:center;padding:20px;color:#9ca3af;">No invoices found.</td></tr>'}
-    </tbody>
-  </table>
-  <div style="display:flex;justify-content:flex-end;margin-bottom:24px;">
-    <table style="width:260px;border-collapse:collapse;font-size:11px;">
-      <tr><td style="padding:7px 12px;color:#6b7280;">Total Billed</td><td style="padding:7px 12px;text-align:right;font-weight:600;">${formatCurrency(totalBilled, sym)}</td></tr>
-      <tr style="background:#f9fafb;"><td style="padding:7px 12px;color:#16a34a;">Total Paid</td><td style="padding:7px 12px;text-align:right;font-weight:600;color:#16a34a;">${formatCurrency(totalPaid, sym)}</td></tr>
-      <tr style="background:#111827;color:#fff;"><td style="padding:9px 12px;font-weight:bold;">Outstanding Balance</td><td style="padding:9px 12px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(balance, sym)}</td></tr>
+
+  <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+    <table style="width:280px;border-collapse:collapse;font-size:11px;">
+      <tr><td style="padding:7px 12px;color:#6b7280;">Opening Balance</td><td style="padding:7px 12px;text-align:right;font-weight:600;">${formatCurrency(openingBalance, sym)}</td></tr>
+      <tr style="background:#f9fafb;"><td style="padding:7px 12px;color:#6b7280;">Invoiced this Period</td><td style="padding:7px 12px;text-align:right;font-weight:600;">${formatCurrency(totalInvoicedInPeriod, sym)}</td></tr>
+      <tr><td style="padding:7px 12px;color:#16a34a;">Paid this Period</td><td style="padding:7px 12px;text-align:right;font-weight:600;color:#16a34a;">${formatCurrency(totalPaidInPeriod, sym)}</td></tr>
+      <tr style="background:#111827;color:#fff;"><td style="padding:9px 12px;font-weight:bold;">Closing Balance</td><td style="padding:9px 12px;text-align:right;font-weight:bold;font-size:13px;">${formatCurrency(closingBalance, sym)}</td></tr>
     </table>
   </div>
+
+  <table style="margin-bottom:20px;">
+    <thead><tr>${agingCell('Current', aging.current || 0)}${agingCell('1-30 Days', aging.d1_30 || 0)}${agingCell('31-60 Days', aging.d31_60 || 0)}${agingCell('61-90 Days', aging.d61_90 || 0)}${agingCell('90+ Days', aging.d90plus || 0)}</tr></thead>
+  </table>
+
+  <div style="font-size:12px;font-weight:bold;color:#111827;margin-bottom:8px;">Transaction Detail</div>
+  <table style="margin-bottom:20px;">
+    <thead><tr>
+      <th style="text-align:left;width:12%;">Date</th>
+      <th style="text-align:left;width:16%;">Reference</th>
+      <th style="text-align:left;">Description</th>
+      <th style="text-align:right;width:14%;">Debit</th>
+      <th style="text-align:right;width:14%;">Credit</th>
+      <th style="text-align:right;width:14%;">Balance</th>
+    </tr></thead>
+    <tbody>
+      <tr style="background:#f9fafb;">
+        <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:11px;" colspan="5">Opening Balance</td>
+        <td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:11px;text-align:right;font-weight:600;">${formatCurrency(openingBalance, sym)}</td>
+      </tr>
+      ${ledgerRows || '<tr><td colspan="6" style="border:1px solid #e5e7eb;text-align:center;padding:20px;color:#9ca3af;">No transactions in this period.</td></tr>'}
+      <tr style="background:#111827;color:#fff;">
+        <td style="padding:9px 10px;font-weight:bold;" colspan="5">Closing Balance</td>
+        <td style="padding:9px 10px;text-align:right;font-weight:bold;">${formatCurrency(closingBalance, sym)}</td>
+      </tr>
+    </tbody>
+  </table>
+
   <div style="font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px;">
     This statement was generated on ${today}. Please contact us if you have any queries regarding your account.
   </div>

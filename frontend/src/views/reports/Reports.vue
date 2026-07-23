@@ -19,6 +19,9 @@ const loading = ref(true);
 
 // SOA
 const soaClientId = ref('');
+const soaFromDate = ref('');
+const soaToDate = ref('');
+const soaStatus = ref('');
 const soaData = ref(null);
 const soaLoading = ref(false);
 
@@ -181,7 +184,7 @@ const reportActions = computed(() => {
     case 'pnl':
       return pnlData.value ? { pdf: () => downloadPdf(reportsApi.pnlPdf(pnlYear.value), `pnl-${pnlYear.value}.pdf`) } : {};
     case 'soa':
-      return soaData.value ? { pdf: () => downloadPdf(reportsApi.soaPdf(soaClientId.value), `SOA-${soaData.value.client?.companyName || soaClientId.value}.pdf`) } : {};
+      return soaData.value ? { pdf: () => downloadPdf(reportsApi.soaPdf(soaClientId.value, soaParams()), `SOA-${soaData.value.client?.companyName || soaClientId.value}.pdf`) } : {};
     case 'payroll':
       return payrollData.value ? {
         pdf: () => downloadPdf(reportsApi.payrollPdf({ year: payrollYear.value, month: payrollMonth.value || undefined }), `payroll-${payrollYear.value}-${payrollMonth.value || 'full'}.pdf`),
@@ -228,10 +231,18 @@ async function downloadPdf(apiCall, filename) {
   URL.revokeObjectURL(url);
 }
 
+function soaParams() {
+  return {
+    fromDate: soaFromDate.value || undefined,
+    toDate: soaToDate.value || undefined,
+    status: soaStatus.value || undefined,
+  };
+}
+
 async function loadSoa() {
   if (!soaClientId.value) return;
   soaLoading.value = true;
-  try { soaData.value = (await reportsApi.soa(soaClientId.value)).data; }
+  try { soaData.value = (await reportsApi.soa(soaClientId.value, soaParams())).data; }
   catch (e) { console.error(e); }
   finally { soaLoading.value = false; }
 }
@@ -693,6 +704,23 @@ watch(tab, (newTab) => {
               <option v-for="c in clientsList" :key="c.id" :value="c.id">{{ c.companyName }}</option>
             </select>
           </div>
+          <div class="input-group">
+            <label class="input-label">From Date</label>
+            <input type="date" v-model="soaFromDate" class="input-field" />
+          </div>
+          <div class="input-group">
+            <label class="input-label">To Date</label>
+            <input type="date" v-model="soaToDate" class="input-field" />
+          </div>
+          <div class="input-group">
+            <label class="input-label">Status</label>
+            <select v-model="soaStatus" class="input-field w-36">
+              <option value="">All</option>
+              <option value="sent">Pending</option>
+              <option value="overdue">Overdue</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
           <button @click="loadSoa" :disabled="!soaClientId || soaLoading" class="btn-primary h-9 px-4">
             {{ soaLoading ? 'Loading…' : 'Load Statement' }}
           </button>
@@ -704,54 +732,96 @@ watch(tab, (newTab) => {
             <span class="card-title">{{ soaData.client?.companyName }}</span>
             <span class="text-xs text-gray-400">{{ soaData.client?.contactPerson }} &nbsp;|&nbsp; {{ soaData.client?.email }}</span>
           </div>
+          <div class="px-4 pt-3 text-xs text-gray-400">
+            Period: {{ soaData.period?.fromDate ? fmtDate(soaData.period.fromDate) : 'Account start' }} – {{ fmtDate(soaData.period?.toDate) }}
+          </div>
+
+          <!-- Consolidated summary -->
+          <div class="flex flex-wrap gap-4 justify-between px-4 py-4">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1 min-w-72">
+              <div class="rounded-md bg-gray-50 dark:bg-slate-700/40 px-3 py-2">
+                <div class="text-xs text-gray-500">Opening Balance</div>
+                <div class="font-semibold tabular-nums">{{ fmtSGD(soaData.summary?.openingBalance) }}</div>
+              </div>
+              <div class="rounded-md bg-gray-50 dark:bg-slate-700/40 px-3 py-2">
+                <div class="text-xs text-gray-500">Invoiced this Period</div>
+                <div class="font-semibold tabular-nums">{{ fmtSGD(soaData.summary?.totalInvoicedInPeriod) }}</div>
+              </div>
+              <div class="rounded-md bg-gray-50 dark:bg-slate-700/40 px-3 py-2">
+                <div class="text-xs text-green-700">Paid this Period</div>
+                <div class="font-semibold tabular-nums text-green-700">{{ fmtSGD(soaData.summary?.totalPaidInPeriod) }}</div>
+              </div>
+              <div class="rounded-md bg-gray-800 dark:bg-slate-900 px-3 py-2">
+                <div class="text-xs text-gray-300">Closing Balance</div>
+                <div class="font-bold tabular-nums text-white">{{ fmtSGD(soaData.summary?.closingBalance) }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Aging -->
+          <div class="px-4 pb-4 grid grid-cols-5 gap-2">
+            <div class="text-center rounded-md border border-gray-100 dark:border-slate-700 py-2">
+              <div class="text-[10px] uppercase text-gray-400">Current</div>
+              <div class="text-sm font-semibold tabular-nums">{{ fmtSGD(soaData.aging?.current) }}</div>
+            </div>
+            <div class="text-center rounded-md border border-gray-100 dark:border-slate-700 py-2">
+              <div class="text-[10px] uppercase text-gray-400">1-30 Days</div>
+              <div class="text-sm font-semibold tabular-nums">{{ fmtSGD(soaData.aging?.d1_30) }}</div>
+            </div>
+            <div class="text-center rounded-md border border-gray-100 dark:border-slate-700 py-2">
+              <div class="text-[10px] uppercase text-gray-400">31-60 Days</div>
+              <div class="text-sm font-semibold tabular-nums">{{ fmtSGD(soaData.aging?.d31_60) }}</div>
+            </div>
+            <div class="text-center rounded-md border border-gray-100 dark:border-slate-700 py-2">
+              <div class="text-[10px] uppercase text-gray-400">61-90 Days</div>
+              <div class="text-sm font-semibold tabular-nums">{{ fmtSGD(soaData.aging?.d61_90) }}</div>
+            </div>
+            <div class="text-center rounded-md border border-gray-100 dark:border-slate-700 py-2">
+              <div class="text-[10px] uppercase text-gray-400">90+ Days</div>
+              <div class="text-sm font-semibold tabular-nums text-red-700">{{ fmtSGD(soaData.aging?.d90plus) }}</div>
+            </div>
+          </div>
+
+          <!-- Detailed ledger -->
           <table class="mat-table">
             <thead>
               <tr>
-                <th>Invoice No</th>
-                <th class="text-center">Date</th>
-                <th class="text-center">Due Date</th>
-                <th class="text-right">Amount</th>
-                <th class="text-right">Paid</th>
+                <th class="text-left">Date</th>
+                <th class="text-left">Reference</th>
+                <th class="text-left">Description</th>
+                <th class="text-right">Debit</th>
+                <th class="text-right">Credit</th>
                 <th class="text-right">Balance</th>
-                <th class="text-center">Status</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-if="!soaData.invoices?.length"><td colspan="7" class="text-center py-8 text-gray-400">No invoices found.</td></tr>
-              <tr v-for="inv in soaData.invoices" :key="inv.id">
-                <td class="font-medium">{{ inv.invoiceNo }}</td>
-                <td class="text-center text-sm text-gray-500">{{ fmtDate(inv.date) }}</td>
-                <td class="text-center text-sm text-gray-500">{{ fmtDate(inv.dueDate) }}</td>
-                <td class="text-right tabular-nums">{{ fmtSGD(inv.totalAmount) }}</td>
-                <td class="text-right tabular-nums text-green-700">{{ fmtSGD((inv.payments||[]).reduce((s,p)=>s+parseFloat(p.amount||0),0)) }}</td>
-                <td class="text-right tabular-nums font-medium" :class="(parseFloat(inv.totalAmount||0)-(inv.payments||[]).reduce((s,p)=>s+parseFloat(p.amount||0),0))>0?'text-red-700':'text-gray-400'">
-                  {{ fmtSGD(parseFloat(inv.totalAmount||0)-(inv.payments||[]).reduce((s,p)=>s+parseFloat(p.amount||0),0)) }}
-                </td>
-                <td class="text-center">
-                  <span class="text-xs px-2 py-0.5 rounded-full font-medium"
-                    :class="inv.status==='paid'?'bg-green-50 text-green-700':inv.status==='overdue'?'bg-red-50 text-red-700':'bg-amber-50 text-amber-700'">
-                    {{ inv.status }}
+              <tr class="bg-gray-50 dark:bg-slate-700/30">
+                <td colspan="5" class="font-medium">Opening Balance</td>
+                <td class="text-right tabular-nums font-medium">{{ fmtSGD(soaData.summary?.openingBalance) }}</td>
+              </tr>
+              <tr v-if="!soaData.ledger?.length"><td colspan="6" class="text-center py-8 text-gray-400">No transactions in this period.</td></tr>
+              <tr v-for="(row, idx) in soaData.ledger" :key="idx">
+                <td class="text-sm text-gray-500">{{ fmtDate(row.date) }}</td>
+                <td class="font-medium">{{ row.ref }}</td>
+                <td class="text-sm">
+                  <span v-if="row.type === 'invoice'">Invoice
+                    <span class="text-xs px-2 py-0.5 rounded-full font-medium ml-1"
+                      :class="row.status==='paid'?'bg-green-50 text-green-700':row.status==='overdue'?'bg-red-50 text-red-700':'bg-amber-50 text-amber-700'">
+                      {{ row.status }}
+                    </span>
                   </span>
+                  <span v-else>Payment Received</span>
                 </td>
+                <td class="text-right tabular-nums">{{ row.debit ? fmtSGD(row.debit) : '' }}</td>
+                <td class="text-right tabular-nums text-green-700">{{ row.credit ? fmtSGD(row.credit) : '' }}</td>
+                <td class="text-right tabular-nums font-medium">{{ fmtSGD(row.balance) }}</td>
+              </tr>
+              <tr class="bg-gray-800 dark:bg-slate-900 text-white">
+                <td colspan="5" class="font-bold">Closing Balance</td>
+                <td class="text-right tabular-nums font-bold">{{ fmtSGD(soaData.summary?.closingBalance) }}</td>
               </tr>
             </tbody>
           </table>
-        </div>
-        <div class="flex justify-end">
-          <div class="card w-72 p-0">
-            <div class="flex justify-between px-4 py-2.5 text-sm border-b border-gray-100 dark:border-slate-700">
-              <span class="text-gray-500">Total Billed</span>
-              <span class="font-medium tabular-nums">{{ fmtSGD(soaData.totals?.totalBilled) }}</span>
-            </div>
-            <div class="flex justify-between px-4 py-2.5 text-sm border-b border-gray-100 dark:border-slate-700">
-              <span class="text-green-700">Total Paid</span>
-              <span class="font-medium tabular-nums text-green-700">{{ fmtSGD(soaData.totals?.totalPaid) }}</span>
-            </div>
-            <div class="flex justify-between px-4 py-3 text-sm bg-gray-50 dark:bg-slate-700/40 rounded-b">
-              <span class="font-bold text-gray-800 dark:text-slate-200">Outstanding</span>
-              <span class="font-bold tabular-nums" :class="(soaData.totals?.balance||0)>0?'text-red-700':'text-gray-400'">{{ fmtSGD(soaData.totals?.balance) }}</span>
-            </div>
-          </div>
         </div>
       </div>
     </div>

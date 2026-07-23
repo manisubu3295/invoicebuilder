@@ -604,27 +604,93 @@ router.get('/pnl/pdf', async (req, res) => {
 });
 
 // ── Statement of Account ──
+// Balance-forward statement: opening balance (activity before fromDate) + a dated
+// ledger of invoice debits / payment credits within [fromDate, toDate] + running balance.
+// `status` narrows the invoice set the whole statement is built from ('sent'|'overdue'|'paid'
+// or omitted/'all' for everything except draft/cancelled, which are never real receivables).
+async function buildSoaData(clientId, { fromDate, toDate, status } = {}) {
+  const client = await Client.findByPk(clientId);
+  if (!client) return null;
+
+  const statusWhere = status && status !== 'all'
+    ? { status }
+    : { status: { [Op.notIn]: ['draft', 'cancelled'] } };
+
+  const invoices = await Invoice.findAll({
+    where: { clientId, isTest: false, ...statusWhere },
+    include: [
+      { model: InvoiceItem, as: 'items' },
+      { model: Payment, as: 'payments', order: [['paymentDate', 'ASC']] },
+    ],
+    order: [['date', 'ASC']],
+  });
+
+  const effTo = toDate || new Date().toISOString().slice(0, 10);
+
+  let openingBalance = 0;
+  const ledger = [];
+
+  for (const inv of invoices) {
+    const invDate = inv.date;
+    if (fromDate && invDate < fromDate) {
+      openingBalance += parseFloat(inv.totalAmount || 0);
+    } else if (invDate <= effTo) {
+      ledger.push({
+        date: invDate, type: 'invoice', ref: inv.invoiceNo,
+        status: inv.status, debit: parseFloat(inv.totalAmount || 0), credit: 0,
+      });
+    }
+    for (const p of inv.payments || []) {
+      if (fromDate && p.paymentDate < fromDate) {
+        openingBalance -= parseFloat(p.amount || 0);
+      } else if (p.paymentDate <= effTo) {
+        ledger.push({
+          date: p.paymentDate, type: 'payment', ref: inv.invoiceNo,
+          debit: 0, credit: parseFloat(p.amount || 0),
+        });
+      }
+    }
+  }
+
+  ledger.sort((a, b) => a.date.localeCompare(b.date));
+  let running = openingBalance;
+  for (const row of ledger) { running += row.debit - row.credit; row.balance = running; }
+  const closingBalance = running;
+
+  const totalInvoicedInPeriod = ledger.reduce((s, r) => s + r.debit, 0);
+  const totalPaidInPeriod = ledger.reduce((s, r) => s + r.credit, 0);
+
+  // Aging buckets, for invoices still carrying a balance as of effTo
+  const aging = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 };
+  for (const inv of invoices) {
+    if (inv.date > effTo) continue;
+    const paid = (inv.payments || [])
+      .filter(p => p.paymentDate <= effTo)
+      .reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    const bal = parseFloat(inv.totalAmount || 0) - paid;
+    if (bal <= 0.005) continue;
+    const dueDate = inv.dueDate || inv.date;
+    const daysOverdue = Math.floor((new Date(effTo) - new Date(dueDate)) / 86400000);
+    if (daysOverdue <= 0) aging.current += bal;
+    else if (daysOverdue <= 30) aging.d1_30 += bal;
+    else if (daysOverdue <= 60) aging.d31_60 += bal;
+    else if (daysOverdue <= 90) aging.d61_90 += bal;
+    else aging.d90plus += bal;
+  }
+
+  return {
+    client, invoices, ledger,
+    period: { fromDate: fromDate || null, toDate: effTo, status: status || 'all' },
+    summary: { openingBalance, totalInvoicedInPeriod, totalPaidInPeriod, closingBalance },
+    aging,
+  };
+}
+
 router.get('/soa/:clientId', async (req, res) => {
   try {
-    const client = await Client.findByPk(req.params.clientId);
-    if (!client) return res.status(404).json({ message: 'Client not found' });
-
-    const invoices = await Invoice.findAll({
-      where: { clientId: req.params.clientId, isTest: false },
-      include: [
-        { model: InvoiceItem, as: 'items' },
-        { model: Payment, as: 'payments', order: [['paymentDate', 'ASC']] },
-      ],
-      order: [['date', 'ASC']],
-    });
-
-    const totalBilled = invoices.reduce((s, i) => s + parseFloat(i.totalAmount || 0), 0);
-    const totalPaid = invoices.reduce((s, i) => {
-      return s + (i.payments || []).reduce((ps, p) => ps + parseFloat(p.amount || 0), 0);
-    }, 0);
-    const balance = totalBilled - totalPaid;
-
-    res.json({ client, invoices, totals: { totalBilled, totalPaid, balance } });
+    const data = await buildSoaData(req.params.clientId, req.query);
+    if (!data) return res.status(404).json({ message: 'Client not found' });
+    res.json(data);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -632,17 +698,14 @@ router.get('/soa/:clientId', async (req, res) => {
 
 router.get('/soa/:clientId/pdf', async (req, res) => {
   try {
-    const client = await Client.findByPk(req.params.clientId);
-    if (!client) return res.status(404).json({ message: 'Client not found' });
-
-    const invoices = await Invoice.findAll({
-      where: { clientId: req.params.clientId, isTest: false },
-      include: [{ model: Payment, as: 'payments', order: [['paymentDate', 'ASC']] }],
-      order: [['date', 'ASC']],
-    });
+    const data = await buildSoaData(req.params.clientId, req.query);
+    if (!data) return res.status(404).json({ message: 'Client not found' });
 
     const settings = (await CompanySettings.findOne()) || {};
-    const buffer = await generateSOAPDF(client.toJSON(), invoices.map(i => i.toJSON()), settings.toJSON ? settings.toJSON() : settings);
+    const buffer = await generateSOAPDF(
+      data.client.toJSON(), data,
+      settings.toJSON ? settings.toJSON() : settings
+    );
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="soa-${req.params.clientId}.pdf"`);
     res.send(buffer);
