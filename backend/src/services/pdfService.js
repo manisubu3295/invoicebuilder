@@ -1102,40 +1102,87 @@ function buildItemAmountMatrixInvoiceHtml(invoice, client, items, settings = {},
 </body></html>`;
 }
 
+// A fresh Chromium launch per PDF request used to take ~4s and, on any
+// failure (e.g. a navigation timeout under concurrent load), leaked the
+// entire browser process tree forever since there was no try/finally around
+// browser.close(). Instead we keep one shared browser alive across requests
+// (self-healing if it crashes/disconnects) and only open/close a Page per
+// render, which a try/finally can always guarantee gets cleaned up.
+let browserPromise = null;
+async function getBrowser() {
+  if (!browserPromise) {
+    browserPromise = puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    }).catch(err => { browserPromise = null; throw err; });
+  }
+  const browser = await browserPromise;
+  if (!browser.isConnected()) { browserPromise = null; return getBrowser(); }
+  return browser;
+}
+
+async function closeBrowser() {
+  if (!browserPromise) return;
+  try { const browser = await browserPromise; await browser.close(); } catch { /* already dead */ }
+  browserPromise = null;
+}
+
+// Caps how many PDFs render at once — under load-tested concurrency, letting
+// every request launch/compete for CPU simultaneously tripled per-request
+// latency and caused outright navigation timeouts. Excess requests queue
+// (FIFO) instead of piling onto the CPU at once. Tunable via env for the
+// production VPS without a code change.
+const MAX_CONCURRENT_RENDERS = parseInt(process.env.PDF_MAX_CONCURRENT_RENDERS || '3', 10);
+let activeRenders = 0;
+const renderQueue = [];
+function acquireSlot() {
+  if (activeRenders < MAX_CONCURRENT_RENDERS) { activeRenders++; return Promise.resolve(); }
+  return new Promise(resolve => renderQueue.push(resolve));
+}
+function releaseSlot() {
+  const next = renderQueue.shift();
+  if (next) next();
+  else activeRenders--;
+}
+
+async function renderPdf(html, pdfOptions) {
+  await acquireSlot();
+  let page;
+  try {
+    const browser = await getBrowser();
+    page = await browser.newPage();
+    // No external network requests happen in any generated HTML (fonts are
+    // the browser-default stack, logo/seal/signature images are inline
+    // data: URIs) — 'load' still waits for those images to decode/paint,
+    // without networkidle0's extra dead-time wait for network activity that
+    // never happens.
+    await page.setContent(html, { waitUntil: 'load' });
+    return await page.pdf(pdfOptions);
+  } finally {
+    if (page) { try { await page.close(); } catch { /* page/browser already gone */ } }
+    releaseSlot();
+  }
+}
+
 async function generatePDF(html, filename, options = {}) {
   ensureDir(UPLOADS_DIR);
   const outputPath = path.join(UPLOADS_DIR, filename);
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
-  const page = await browser.newPage();
-  await page.setContent(html, { waitUntil: 'networkidle0' });
-  await page.pdf({
-    path: outputPath,
+  const buffer = await renderPdf(html, {
     format: 'A4',
     landscape: !!options.landscape,
     margin: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
     printBackground: true,
   });
-  await browser.close();
+  fs.writeFileSync(outputPath, buffer);
   return outputPath;
 }
 
 async function generatePDFBuffer(html) {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
-  const page = await browser.newPage();
-  await page.setContent(html, { waitUntil: 'networkidle0' });
-  const buffer = await page.pdf({
+  return renderPdf(html, {
     format: 'A4',
     margin: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
     printBackground: true,
   });
-  await browser.close();
-  return buffer;
 }
 
 async function generateInvoicePDF(invoice, client, items, settings, catalogPriceMap = null, clientOutstanding = null) {
@@ -1794,4 +1841,5 @@ module.exports = {
   generateInvoicePDF, generateQuotationPDF, generateSOAPDF, generatePayrollPDF, generateFleetCompliancePDF,
   generateRevenuePDF, generateAgingPDF, generateClientSummaryPDF, generateDriverReportPDF, generateVehicleReportPDF,
   generateExpenseReportPDF, generateAttendancePDF, generatePnlPDF, generateJobSummaryPDF, generateArActionPDF,
+  closeBrowser,
 };

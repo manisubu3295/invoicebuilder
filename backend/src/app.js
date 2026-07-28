@@ -221,8 +221,9 @@ async function startServer() {
     // Graceful shutdown
     const shutdown = (signal) => {
       logger.info(`${signal} received. Shutting down gracefully…`);
-      server.close(() => {
-        sequelize.close();
+      server.close(async () => {
+        await require('./services/pdfService').closeBrowser();
+        await sequelize.close();
         logger.info('Server closed.');
         process.exit(0);
       });
