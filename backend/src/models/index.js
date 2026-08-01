@@ -28,6 +28,7 @@ db.JobAttendance = require('./JobAttendance')(sequelize, Sequelize.DataTypes);
 db.Expense = require('./Expense')(sequelize, Sequelize.DataTypes);
 db.Category = require('./Category')(sequelize, Sequelize.DataTypes);
 db.ClientCategory = require('./ClientCategory')(sequelize, Sequelize.DataTypes);
+db.RateUnit = require('./RateUnit')(sequelize, Sequelize.DataTypes);
 
 // Associations
 db.Client.hasMany(db.Quotation, { foreignKey: 'clientId', as: 'quotations' });

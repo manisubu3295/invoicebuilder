@@ -97,6 +97,7 @@ app.use('/api/item-catalog', require('./routes/itemCatalog'));
 app.use('/api/job-attendance', require('./routes/jobAttendance'));
 app.use('/api/expenses',     require('./routes/expenses'));
 app.use('/api/categories',   require('./routes/categories'));
+app.use('/api/rate-units',   require('./routes/rateUnits'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
 
@@ -138,7 +139,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 const bcrypt = require('bcryptjs');
-const { User, Client } = require('./models');
+const { User, Client, RateUnit } = require('./models');
 
 async function seedIfEmpty() {
   const count = await User.count();
@@ -164,6 +165,17 @@ async function seedIfEmpty() {
       isActive: true,
     });
     logger.info('Seeded: admin user (username: admin) + SMM client');
+  }
+
+  // Seed default billing units (Per Day / Per Week) on every environment, not
+  // just fresh installs, so existing invoices/quotations keep resolving.
+  if (await RateUnit.count() === 0) {
+    const { v4: uuidv4 } = require('uuid');
+    await RateUnit.bulkCreate([
+      { id: uuidv4(), code: 'per_day', label: 'Per Day', divisorDays: 1, sortOrder: 1 },
+      { id: uuidv4(), code: 'per_week', label: 'Per Week', divisorDays: 7, sortOrder: 2 },
+    ]);
+    logger.info('Seeded: default billing units (Per Day, Per Week)');
   }
 
   // Patch any users missing a username (schema upgrade from email-login system)

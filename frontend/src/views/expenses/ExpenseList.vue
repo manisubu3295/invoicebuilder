@@ -12,7 +12,12 @@ const loading = ref(true);
 const rejectNote = ref('');
 const rejectingId = ref('');
 
-const filters = ref({ driverId: '', vehicleId: '', status: '', startDate: '', endDate: '' });
+function firstDayOfMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+const filters = ref({ driverId: '', vehicleId: '', status: '', startDate: firstDayOfMonth(), endDate: '' });
 
 const filtered = computed(() => {
   let list = expenses.value;

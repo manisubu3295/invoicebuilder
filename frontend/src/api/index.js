@@ -138,6 +138,14 @@ export const itemCatalogApi = {
   removePermanent: (id) => api.delete(`/item-catalog/${id}/permanent`),
 };
 
+export const rateUnitsApi = {
+  list: (params) => api.get('/rate-units', { params }),
+  create: (data) => api.post('/rate-units', data),
+  update: (id, data) => api.put(`/rate-units/${id}`, data),
+  remove: (id) => api.delete(`/rate-units/${id}`),
+  removePermanent: (id) => api.delete(`/rate-units/${id}/permanent`),
+};
+
 export const categoriesApi = {
   list: (params) => api.get('/categories', { params }),
   create: (data) => api.post('/categories', data),

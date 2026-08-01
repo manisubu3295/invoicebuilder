@@ -3,11 +3,13 @@ import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { quotationsApi, clientsApi, itemCatalogApi } from '../../api/index.js';
 import { useSettingsStore } from '../../stores/settings.js';
+import { useRateUnitsStore } from '../../stores/rateUnits.js';
 import LineItemEditor from '../../components/shared/LineItemEditor.vue';
 
 const route = useRoute();
 const router = useRouter();
 const settingsStore = useSettingsStore();
+const rateUnitsStore = useRateUnitsStore();
 const isEdit = computed(() => !!route.params.id);
 const currency = computed(() => settingsStore.settings?.currency || 'SGD');
 const sym = computed(() => settingsStore.settings?.currencySymbol || 'S$');
@@ -35,6 +37,7 @@ onMounted(async () => {
   [clients.value, catalog.value] = await Promise.all([
     clientsApi.list().then(r => r.data),
     itemCatalogApi.list().then(r => r.data).catch(() => []),
+    rateUnitsStore.fetchRateUnits(),
   ]);
   if (isEdit.value) {
     const { data } = await quotationsApi.get(route.params.id);
@@ -83,7 +86,7 @@ async function submit() {
       </div>
 
       <div class="section-label mb-3">Line Items</div>
-      <LineItemEditor v-model="form.items" :catalog="catalog" />
+      <LineItemEditor v-model="form.items" :catalog="catalog" :rate-units="rateUnitsStore.rateUnits || []" />
 
       <div class="flex justify-end mt-5 pt-5 border-t border-gray-100">
         <div class="text-right">

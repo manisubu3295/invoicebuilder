@@ -43,6 +43,7 @@ const navItems = computed(() => {
     ...(auth.user?.role === 'admin' ? [
       { path: '/users',        label: 'Users',        icon: 'group' },
       { path: '/item-catalog', label: 'Item Catalog',  icon: 'category' },
+      { path: '/rate-units',   label: 'Billing Units', icon: 'schedule' },
       { path: '/settings',     label: 'Settings',     icon: 'settings' },
     ] : []),
     { path: '/guide', label: 'Help / Guide', icon: 'help_outline', divider: true },

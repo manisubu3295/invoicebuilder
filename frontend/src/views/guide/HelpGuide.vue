@@ -67,7 +67,7 @@ const en = {
       'Go to Quotations → click "+ New Quotation".',
       'Select the Client and enter the Date and Valid Until date.',
       'Add line items: click "+ Service" for a rate-based item, or "+ Delivery" for trip-based items.',
-      'Service items: fill in description, From Date, To Date, and rate (per day or per week).',
+      'Service items: fill in description, From Date, To Date, and rate — the "Per / Qty" list (Per Day, Per Week, etc.) is managed by admins on the Billing Units page.',
       'Delivery items: fill in description and unit price, then add one or more delivery dates using the date chip bar — click "+ Add" for each date. Quantity auto-fills from the number of dates.',
       'Use the search box in the description field to pick from the Item Catalog for common service descriptions and auto-fill prices.',
       'Dates are mandatory — From/To for service items and at least one date for delivery items.',

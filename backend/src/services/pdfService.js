@@ -46,16 +46,34 @@ function getSignatureHtml(settings = {}) {
   return `<img src="${settings.signatureImage}" alt="Signature" style="max-width:150px;max-height:60px;margin-bottom:4px;"/>`;
 }
 
-function calcPeriodText(item) {
+// unitMap: code -> RateUnit row (label, divisorDays), fetched once per PDF so
+// historical items still resolve correctly even if the unit was later deactivated.
+function unitWord(unit) {
+  const label = unit.label || '';
+  return label.replace(/^per\s+/i, '').toLowerCase() || label.toLowerCase();
+}
+
+function calcPeriodText(item, unitMap = {}) {
   if (!item.fromDate || !item.toDate) return '—';
   const days = Math.round((new Date(item.toDate) - new Date(item.fromDate)) / 86400000) + 1;
   const range = `${formatDate(item.fromDate)} – ${formatDate(item.toDate)}`;
+  const unit = unitMap[item.rateType];
+  if (unit) {
+    const divisor = unit.divisorDays || 1;
+    const count = Math.ceil(days / divisor);
+    const word = unitWord(unit);
+    const countStr = `${count} ${word}${count !== 1 ? 's' : ''}`;
+    return divisor === 1
+      ? `${range}<br/><strong>${countStr}</strong>`
+      : `${range}<br/><strong>${countStr}</strong> (${days} days)`;
+  }
+  // Fallback for a rateType that no longer has a matching RateUnit row
   if (item.rateType === 'per_day') return `${range}<br/><strong>${days} day${days !== 1 ? 's' : ''}</strong>`;
   const weeks = Math.ceil(days / 7);
   return `${range}<br/><strong>${weeks} week${weeks !== 1 ? 's' : ''}</strong> (${days} days)`;
 }
 
-function buildItemPeriodCell(item) {
+function buildItemPeriodCell(item, unitMap = {}) {
   if (item.itemType === 'delivery') {
     let dates = [];
     try { dates = item.deliveryDates ? JSON.parse(item.deliveryDates) : []; } catch {}
@@ -65,10 +83,10 @@ function buildItemPeriodCell(item) {
       : '—';
     return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;color:#4b5563;line-height:1.6;">${dateStr}</td>`;
   }
-  return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;color:#4b5563;">${calcPeriodText(item)}</td>`;
+  return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:center;font-size:11px;color:#4b5563;">${calcPeriodText(item, unitMap)}</td>`;
 }
 
-function buildItemRateCell(item, symbol) {
+function buildItemRateCell(item, symbol, unitMap = {}) {
   if (item.itemType === 'delivery') {
     const qty = parseFloat(item.quantity || 0);
     const price = parseFloat(item.unitPrice || 0);
@@ -77,19 +95,20 @@ function buildItemRateCell(item, symbol) {
       ${qty ? `${qtyStr} &times; ${formatCurrency(price, symbol)}` : '—'}
     </td>`;
   }
-  const rateUnit = item.rateType === 'per_day' ? '/day' : '/week';
+  const unit = unitMap[item.rateType];
+  const rateUnit = unit ? `/${unitWord(unit)}` : (item.rateType === 'per_day' ? '/day' : '/week');
   return `<td style="border:1px solid #e5e7eb;padding:8px;text-align:right;">
     ${item.rate ? `${formatCurrency(item.rate, symbol)}<span style="font-size:10px;color:#9ca3af;">${rateUnit}</span>` : '—'}
   </td>`;
 }
 
-function buildQuotationRows(items, symbol, cur) {
+function buildQuotationRows(items, symbol, cur, unitMap = {}) {
   const rows = items.sort((a, b) => a.sno - b.sno).map(item => `
       <tr>
         <td style="border:1px solid #e5e7eb;padding:8px;text-align:center;color:#9ca3af;background:#fafafa;">${item.sno}</td>
         <td style="border:1px solid #e5e7eb;padding:8px;"><strong>${item.jobDescription || ''}</strong></td>
-        ${buildItemPeriodCell(item)}
-        ${buildItemRateCell(item, symbol)}
+        ${buildItemPeriodCell(item, unitMap)}
+        ${buildItemRateCell(item, symbol, unitMap)}
         <td style="border:1px solid #e5e7eb;padding:8px;text-align:right;font-weight:bold;">${formatCurrency(item.totalAmount, symbol)}</td>
       </tr>`).join('');
 
@@ -100,7 +119,7 @@ function buildQuotationRows(items, symbol, cur) {
     </tr>`;
 }
 
-function buildInvoiceRows(items, symbol, cur, payments = [], hasRunSheet = false) {
+function buildInvoiceRows(items, symbol, cur, payments = [], hasRunSheet = false, unitMap = {}) {
   const runSheetCell = (item) => hasRunSheet
     ? `<td style="border:1px solid #e5e7eb;padding:10px;text-align:center;font-size:11px;color:#4b5563;">${item.runSheetNo || '—'}</td>`
     : '';
@@ -141,8 +160,8 @@ function buildInvoiceRows(items, symbol, cur, payments = [], hasRunSheet = false
           ${item.notes ? `<div style="font-size:9px;color:#9ca3af;font-weight:normal;font-style:italic;">${item.notes}</div>` : ''}
         </td>
         ${runSheetCell(item)}
-        ${buildItemPeriodCell(item)}
-        ${buildItemRateCell(item, symbol)}
+        ${buildItemPeriodCell(item, unitMap)}
+        ${buildItemRateCell(item, symbol, unitMap)}
         <td style="border:1px solid #e5e7eb;padding:10px;text-align:right;font-weight:bold;">${formatCurrency(item.totalAmount, symbol)}</td>
       </tr>`;
   }).join('');
@@ -200,7 +219,7 @@ function testWatermarkHtml(isTest) {
   return `<div style="border:2px solid #dc2626;background:#fef2f2;color:#dc2626;text-align:center;font-weight:bold;font-size:13px;letter-spacing:0.5px;padding:10px;margin-bottom:20px;">TEST MODE — NOT A REAL DOCUMENT</div>`;
 }
 
-function buildQuotationHtml(quotation, client, items, settings = {}) {
+function buildQuotationHtml(quotation, client, items, settings = {}, unitMap = {}) {
   const sym = settings.currencySymbol || 'S$';
   const cur = settings.currency || 'SGD';
   const termsDays = settings.paymentTermsDays || 30;
@@ -256,7 +275,7 @@ function buildQuotationHtml(quotation, client, items, settings = {}) {
       <th style="width:16%;text-align:right;">RATE</th>
       <th style="width:17%;text-align:right;">AMOUNT (${cur})</th>
     </tr></thead>
-    <tbody>${buildQuotationRows(items, sym, cur)}</tbody>
+    <tbody>${buildQuotationRows(items, sym, cur, unitMap)}</tbody>
   </table>
 
   ${quotation.notes ? `
@@ -299,7 +318,7 @@ function buildQuotationHtml(quotation, client, items, settings = {}) {
 </body></html>`;
 }
 
-function buildInvoiceHtml(invoice, client, items, settings = {}, clientOutstanding = null) {
+function buildInvoiceHtml(invoice, client, items, settings = {}, clientOutstanding = null, unitMap = {}) {
   const sym = settings.currencySymbol || 'S$';
   const cur = settings.currency || 'SGD';
   const termsDays = settings.paymentTermsDays || 30;
@@ -354,7 +373,7 @@ function buildInvoiceHtml(invoice, client, items, settings = {}, clientOutstandi
       <th style="width:16%;text-align:right;">RATE</th>
       <th style="width:17%;text-align:right;">AMOUNT (${cur})</th>
     </tr></thead>
-    <tbody>${buildInvoiceRows(items, sym, cur, invoice.payments || [], hasRunSheet)}${outstandingRowHtml(clientOutstanding, sym, runSheetColspan)}</tbody>
+    <tbody>${buildInvoiceRows(items, sym, cur, invoice.payments || [], hasRunSheet, unitMap)}${outstandingRowHtml(clientOutstanding, sym, runSheetColspan)}</tbody>
   </table>
 
   ${invoice.notes ? `
@@ -1185,6 +1204,14 @@ async function generatePDFBuffer(html) {
   });
 }
 
+// Full list (active + inactive) so historical items still resolve their
+// label/divisor correctly even after a unit is later deactivated.
+async function fetchRateUnitMap() {
+  const { RateUnit } = require('../models');
+  const units = await RateUnit.findAll();
+  return Object.fromEntries(units.map(u => [u.code, u]));
+}
+
 async function generateInvoicePDF(invoice, client, items, settings, catalogPriceMap = null, clientOutstanding = null) {
   const html = invoice.itemAmountMatrix
     ? buildItemAmountMatrixInvoiceHtml(invoice, client, items, settings, catalogPriceMap, clientOutstanding)
@@ -1194,13 +1221,13 @@ async function generateInvoicePDF(invoice, client, items, settings, catalogPrice
         ? buildBulkRunSheetInvoiceHtml(invoice, client, items, settings, clientOutstanding)
         : invoice.invoiceType === 'delivery'
           ? buildDeliveryInvoiceHtml(invoice, client, items, settings, clientOutstanding)
-          : buildInvoiceHtml(invoice, client, items, settings, clientOutstanding);
+          : buildInvoiceHtml(invoice, client, items, settings, clientOutstanding, await fetchRateUnitMap());
   const filename = `Invoice-${invoice.invoiceNo.replace(/\//g, '-')}-${Date.now()}.pdf`;
   return generatePDF(html, filename, { landscape: !!(invoice.itemAmountMatrix || invoice.itemMatrix) });
 }
 
 async function generateQuotationPDF(quotation, client, items, settings) {
-  const html = buildQuotationHtml(quotation, client, items, settings);
+  const html = buildQuotationHtml(quotation, client, items, settings, await fetchRateUnitMap());
   const filename = `Quotation-${quotation.quotationNo.replace(/\//g, '-')}-${Date.now()}.pdf`;
   return generatePDF(html, filename);
 }

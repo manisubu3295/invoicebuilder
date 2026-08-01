@@ -3,12 +3,14 @@ import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { quotationsApi } from '../../api/index.js';
 import { useSettingsStore } from '../../stores/settings.js';
+import { useRateUnitsStore } from '../../stores/rateUnits.js';
 import { useAuthStore } from '../../stores/auth.js';
 import StatusBadge from '../../components/shared/StatusBadge.vue';
 
 const route = useRoute();
 const router = useRouter();
 const settingsStore = useSettingsStore();
+const rateUnitsStore = useRateUnitsStore();
 const authStore = useAuthStore();
 const q = ref(null);
 const loading = ref(true);
@@ -31,10 +33,24 @@ function fmtDate(d) {
   const dt = new Date(d);
   return isNaN(dt.getTime()) ? '' : dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
 }
+// Full list (incl. deactivated) so historical items keep their correct
+// label even after a unit is retired.
+const rateUnitsByCode = computed(() => Object.fromEntries((rateUnitsStore.rateUnits || []).map(u => [u.code, u])));
+function unitWord(unit) {
+  const label = unit.label || '';
+  return (label.replace(/^per\s+/i, '') || label).toLowerCase();
+}
 function calcPeriod(item) {
   if (item.itemType === 'delivery') return fmtDate(item.deliveryDate);
   if (!item.fromDate || !item.toDate) return '';
   const days = Math.round((new Date(item.toDate) - new Date(item.fromDate)) / 86400000) + 1;
+  const unit = rateUnitsByCode.value[item.rateType];
+  if (unit) {
+    const divisor = unit.divisorDays || 1;
+    const count = Math.ceil(days / divisor);
+    const countStr = `${count} ${unitWord(unit)}${count !== 1 ? 's' : ''}`;
+    return divisor === 1 ? countStr : `${countStr} (${days}d)`;
+  }
   if (item.rateType === 'per_day') return `${days} day${days !== 1 ? 's' : ''}`;
   return `${Math.ceil(days / 7)} wk (${days}d)`;
 }
@@ -43,7 +59,10 @@ function rateLabel(item) {
     const qty = parseFloat(item.quantity || 0), price = parseFloat(item.unitPrice || 0);
     return qty || price ? `${qty.toFixed(3).replace(/\.?0+$/, '')} × ${fmt(price)}` : '';
   }
-  return item.rate ? `${fmt(item.rate)} / ${item.rateType === 'per_day' ? 'day' : 'wk'}` : '';
+  if (!item.rate) return '';
+  const unit = rateUnitsByCode.value[item.rateType];
+  const suffix = unit ? unitWord(unit) : (item.rateType === 'per_day' ? 'day' : 'wk');
+  return `${fmt(item.rate)} / ${suffix}`;
 }
 
 function showToast(msg) { toast.value = msg; setTimeout(() => toast.value = '', 3000); }
@@ -151,7 +170,7 @@ async function deleteQuotation() {
 }
 
 onMounted(async () => {
-  await settingsStore.fetchSettings();
+  await Promise.all([settingsStore.fetchSettings(), rateUnitsStore.fetchRateUnits()]);
   try { q.value = (await quotationsApi.get(route.params.id)).data; }
   finally { loading.value = false; }
 });

@@ -5,6 +5,7 @@ const props = defineProps({
   modelValue: Array,
   catalog: { type: Array, default: () => [] },
   showRunSheet: { type: Boolean, default: false },
+  rateUnits: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['update:modelValue']);
 
@@ -12,6 +13,20 @@ const items = computed({
   get: () => props.modelValue,
   set: (v) => emit('update:modelValue', v),
 });
+
+// Per/Qty options — admin-configurable via the Billing Units maintenance page.
+const activeRateUnits = computed(() => props.rateUnits.filter(u => u.isActive));
+const rateUnitsByCode = computed(() => Object.fromEntries(props.rateUnits.map(u => [u.code, u])));
+
+// A row's current unit is always shown even if it's since been deactivated
+// (or is a legacy code), so the field never silently blanks out.
+function optionsFor(item) {
+  const list = [...activeRateUnits.value];
+  if (item.rateType && !list.some(u => u.code === item.rateType)) {
+    list.push(rateUnitsByCode.value[item.rateType] || { code: item.rateType, label: item.rateType });
+  }
+  return list;
+}
 
 // Dropdown state
 const openIdx = ref(-1);
@@ -90,7 +105,7 @@ function selectCatalogItem(rowIdx, catItem) {
 function addRow(type = 'service') {
   items.value = [...items.value, {
     sno: items.value.length + 1, itemType: type, jobDescription: '',
-    fromDate: '', toDate: '', rate: '', rateType: 'per_week',
+    fromDate: '', toDate: '', rate: '', rateType: activeRateUnits.value[0]?.code || 'per_week',
     deliveryDate: '', deliveryDates: [], quantity: 1, unitPrice: '', totalAmount: 0, runSheetNo: '',
   }];
 }
@@ -107,7 +122,8 @@ function calcTotal(item) {
   if (!rate || !item.fromDate || !item.toDate) return 0;
   const days = Math.round((new Date(item.toDate) - new Date(item.fromDate)) / 86400000) + 1;
   if (days <= 0) return 0;
-  return parseFloat((rate * (item.rateType === 'per_day' ? days : Math.ceil(days / 7))).toFixed(2));
+  const divisor = rateUnitsByCode.value[item.rateType]?.divisorDays || 7;
+  return parseFloat((rate * Math.ceil(days / divisor)).toFixed(2));
 }
 
 function updateItem(i, field, value) {
@@ -236,8 +252,7 @@ const inputCls = 'w-full bg-transparent focus:outline-none focus:ring-1 focus:ri
                 <select :value="item.rateType"
                   @change="updateItem(i,'rateType',$event.target.value)"
                   class="w-full bg-transparent text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 rounded py-0.5">
-                  <option value="per_week">Per Week</option>
-                  <option value="per_day">Per Day</option>
+                  <option v-for="u in optionsFor(item)" :key="u.code" :value="u.code">{{ u.label }}</option>
                 </select>
               </td>
             </template>
