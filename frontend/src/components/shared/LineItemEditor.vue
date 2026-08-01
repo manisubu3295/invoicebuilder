@@ -18,6 +18,16 @@ const items = computed({
 const activeRateUnits = computed(() => props.rateUnits.filter(u => u.isActive));
 const rateUnitsByCode = computed(() => Object.fromEntries(props.rateUnits.map(u => [u.code, u])));
 
+// Calendar-month count crossed between two ISO date strings (any partial
+// month touched counts as 1) — parsed from the string directly rather than
+// via Date.getMonth(), which reflects local timezone and can shift the
+// month/year near midnight UTC.
+function monthsBetweenInclusive(fromStr, toStr) {
+  const [fy, fm] = fromStr.split('-').map(Number);
+  const [ty, tm] = toStr.split('-').map(Number);
+  return (ty - fy) * 12 + (tm - fm) + 1;
+}
+
 // A row's current unit is always shown even if it's since been deactivated
 // (or is a legacy code), so the field never silently blanks out.
 function optionsFor(item) {
@@ -122,8 +132,11 @@ function calcTotal(item) {
   if (!rate || !item.fromDate || !item.toDate) return 0;
   const days = Math.round((new Date(item.toDate) - new Date(item.fromDate)) / 86400000) + 1;
   if (days <= 0) return 0;
-  const divisor = rateUnitsByCode.value[item.rateType]?.divisorDays || 7;
-  return parseFloat((rate * Math.ceil(days / divisor)).toFixed(2));
+  const unit = rateUnitsByCode.value[item.rateType];
+  const count = unit?.calendarBased
+    ? monthsBetweenInclusive(item.fromDate, item.toDate)
+    : Math.ceil(days / (unit?.divisorDays || 7));
+  return parseFloat((rate * count).toFixed(2));
 }
 
 function updateItem(i, field, value) {

@@ -40,16 +40,26 @@ function unitWord(unit) {
   const label = unit.label || '';
   return (label.replace(/^per\s+/i, '') || label).toLowerCase();
 }
+// Calendar-month count crossed between two ISO date strings (any partial
+// month touched counts as 1) — parsed from the string directly rather than
+// via Date.getMonth(), which reflects local timezone and can shift the
+// month/year near midnight UTC.
+function monthsBetweenInclusive(fromStr, toStr) {
+  const [fy, fm] = fromStr.split('-').map(Number);
+  const [ty, tm] = toStr.split('-').map(Number);
+  return (ty - fy) * 12 + (tm - fm) + 1;
+}
 function calcPeriod(item) {
   if (item.itemType === 'delivery') return fmtDate(item.deliveryDate);
   if (!item.fromDate || !item.toDate) return '';
   const days = Math.round((new Date(item.toDate) - new Date(item.fromDate)) / 86400000) + 1;
   const unit = rateUnitsByCode.value[item.rateType];
   if (unit) {
-    const divisor = unit.divisorDays || 1;
-    const count = Math.ceil(days / divisor);
+    const count = unit.calendarBased
+      ? monthsBetweenInclusive(item.fromDate, item.toDate)
+      : Math.ceil(days / (unit.divisorDays || 1));
     const countStr = `${count} ${unitWord(unit)}${count !== 1 ? 's' : ''}`;
-    return divisor === 1 ? countStr : `${countStr} (${days}d)`;
+    return (!unit.calendarBased && unit.divisorDays === 1) ? countStr : `${countStr} (${days}d)`;
   }
   if (item.rateType === 'per_day') return `${days} day${days !== 1 ? 's' : ''}`;
   return `${Math.ceil(days / 7)} wk (${days}d)`;

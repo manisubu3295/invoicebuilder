@@ -33,17 +33,29 @@ router.get('/', async (req, res) => {
   }
 });
 
+// calendarBased units bill by actual calendar months crossed (28-31 day months
+// all count as 1), so divisorDays doesn't apply — stored as a harmless
+// placeholder and ignored by the calc logic wherever calendarBased is set.
+function parseDivisorDays(body) {
+  if (body.calendarBased) return { ok: true, days: 1 };
+  const days = parseInt(body.divisorDays, 10);
+  if (!days || days < 1) return { ok: false };
+  return { ok: true, days };
+}
+
 // POST — admin only
 router.post('/', rbac('admin'), async (req, res) => {
   try {
-    const { label, divisorDays } = req.body;
+    const { label } = req.body;
     if (!label?.trim()) return res.status(400).json({ message: 'label is required' });
-    const days = parseInt(divisorDays, 10);
-    if (!days || days < 1) return res.status(400).json({ message: 'divisorDays must be a positive integer' });
+    const calendarBased = !!req.body.calendarBased;
+    const { ok, days } = parseDivisorDays(req.body);
+    if (!ok) return res.status(400).json({ message: 'divisorDays must be a positive integer' });
     const unit = await RateUnit.create({
       code: await uniqueCode(label.trim()),
       label: label.trim(),
       divisorDays: days,
+      calendarBased,
     });
     res.status(201).json(unit);
   } catch (err) {
@@ -57,10 +69,11 @@ router.put('/:id', rbac('admin'), async (req, res) => {
   try {
     const unit = await RateUnit.findByPk(req.params.id);
     if (!unit) return res.status(404).json({ message: 'Not found' });
-    const { label, divisorDays, isActive } = req.body;
+    const { label, isActive } = req.body;
     if (!label?.trim()) return res.status(400).json({ message: 'label is required' });
-    const days = parseInt(divisorDays, 10);
-    if (!days || days < 1) return res.status(400).json({ message: 'divisorDays must be a positive integer' });
+    const calendarBased = !!req.body.calendarBased;
+    const { ok, days } = parseDivisorDays(req.body);
+    if (!ok) return res.status(400).json({ message: 'divisorDays must be a positive integer' });
 
     if (isActive === false && unit.isActive) {
       const activeCount = await RateUnit.count({ where: { isActive: true } });
@@ -70,6 +83,7 @@ router.put('/:id', rbac('admin'), async (req, res) => {
     await unit.update({
       label: label.trim(),
       divisorDays: days,
+      calendarBased,
       isActive: isActive !== undefined ? !!isActive : unit.isActive,
     });
     res.json(unit);

@@ -6,6 +6,7 @@ module.exports = (sequelize, DataTypes) => {
     code: { type: DataTypes.STRING, allowNull: false, unique: true },
     label: { type: DataTypes.STRING, allowNull: false },
     divisorDays: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
+    calendarBased: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   }, { tableName: 'rate_units', timestamps: true });

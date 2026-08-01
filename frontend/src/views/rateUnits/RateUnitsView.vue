@@ -13,7 +13,7 @@ const saving = ref(false);
 const deleting = ref(null);
 const error = ref('');
 
-const blank = () => ({ label: '', divisorDays: 1 });
+const blank = () => ({ label: '', divisorDays: 1, calendarBased: false });
 const form = ref(blank());
 const editingId = ref(null);
 const showForm = ref(false);
@@ -39,7 +39,7 @@ function openAdd() {
 
 function openEdit(unit) {
   editingId.value = unit.id;
-  form.value = { label: unit.label, divisorDays: unit.divisorDays };
+  form.value = { label: unit.label, divisorDays: unit.divisorDays || 1, calendarBased: !!unit.calendarBased };
   error.value = '';
   showForm.value = true;
 }
@@ -54,7 +54,9 @@ function cancelForm() {
 async function save() {
   error.value = '';
   if (!form.value.label.trim()) { error.value = 'Label is required.'; return; }
-  if (!form.value.divisorDays || form.value.divisorDays < 1) { error.value = 'Billing cycle must be at least 1 day.'; return; }
+  if (!form.value.calendarBased && (!form.value.divisorDays || form.value.divisorDays < 1)) {
+    error.value = 'Billing cycle must be at least 1 day.'; return;
+  }
   saving.value = true;
   try {
     if (editingId.value) {
@@ -91,7 +93,7 @@ async function deactivate(unit) {
 async function reactivate(unit) {
   deleting.value = unit.id;
   try {
-    await rateUnitsApi.update(unit.id, { label: unit.label, divisorDays: unit.divisorDays, isActive: true });
+    await rateUnitsApi.update(unit.id, { label: unit.label, divisorDays: unit.divisorDays, calendarBased: unit.calendarBased, isActive: true });
     unit.isActive = true;
     rateUnitsStore.invalidate();
   } catch (e) {
@@ -145,13 +147,20 @@ async function deletePermanent(unit) {
           <label class="input-label">Label *</label>
           <input v-model="form.label" type="text" class="input-field" placeholder="e.g. Per Month"/>
         </div>
-        <div class="input-group">
+        <div v-if="!form.calendarBased" class="input-group">
           <label class="input-label">Billing Cycle (days) *</label>
           <input v-model.number="form.divisorDays" type="number" min="1" step="1" class="input-field" placeholder="30"/>
         </div>
       </div>
-      <p class="text-xs text-gray-400 mt-2">
-        The date range on a line item is divided by this to get the billed quantity — e.g. 30 for a month means a 65-day range bills as 3 months, the same way a 7-day cycle bills weeks today.
+      <label class="flex items-start gap-2 mt-4 text-sm text-gray-600 cursor-pointer">
+        <input type="checkbox" v-model="form.calendarBased" class="mt-0.5"/>
+        <span>
+          Use calendar months instead of a fixed day cycle
+          <span class="block text-xs text-gray-400">Bills by actual calendar months crossed, so a 28, 30, or 31-day month all count as exactly 1 — recommended for "Per Month".</span>
+        </span>
+      </label>
+      <p v-if="!form.calendarBased" class="text-xs text-gray-400 mt-2">
+        The date range on a line item is divided by this to get the billed quantity — e.g. 7 for a week bills a 65-day range as 10 weeks.
       </p>
       <div class="flex gap-3 mt-6">
         <button @click="save" :disabled="saving" class="btn-primary">
@@ -181,7 +190,9 @@ async function deletePermanent(unit) {
         <tbody>
           <tr v-for="unit in units" :key="unit.id" :class="[editingId === unit.id ? 'bg-blue-50' : '', !unit.isActive ? 'opacity-50' : '']">
             <td class="font-medium text-gray-900">{{ unit.label }}</td>
-            <td class="text-right text-gray-500 tabular-nums">{{ unit.divisorDays }} day{{ unit.divisorDays !== 1 ? 's' : '' }}</td>
+            <td class="text-right text-gray-500 tabular-nums">
+              {{ unit.calendarBased ? 'Calendar month' : `${unit.divisorDays} day${unit.divisorDays !== 1 ? 's' : ''}` }}
+            </td>
             <td><span :class="unit.isActive ? 'badge-active' : 'badge-inactive'">{{ unit.isActive ? 'Active' : 'Inactive' }}</span></td>
             <td>
               <div class="flex gap-0.5 justify-end">

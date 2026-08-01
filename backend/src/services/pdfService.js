@@ -53,17 +53,28 @@ function unitWord(unit) {
   return label.replace(/^per\s+/i, '').toLowerCase() || label.toLowerCase();
 }
 
+// Calendar-month count crossed between two ISO date strings (any partial
+// month touched counts as 1) — parsed from the string directly rather than
+// via Date.getMonth(), which reflects local timezone and can shift the
+// month/year near midnight UTC.
+function monthsBetweenInclusive(fromStr, toStr) {
+  const [fy, fm] = fromStr.split('-').map(Number);
+  const [ty, tm] = toStr.split('-').map(Number);
+  return (ty - fy) * 12 + (tm - fm) + 1;
+}
+
 function calcPeriodText(item, unitMap = {}) {
   if (!item.fromDate || !item.toDate) return '—';
   const days = Math.round((new Date(item.toDate) - new Date(item.fromDate)) / 86400000) + 1;
   const range = `${formatDate(item.fromDate)} – ${formatDate(item.toDate)}`;
   const unit = unitMap[item.rateType];
   if (unit) {
-    const divisor = unit.divisorDays || 1;
-    const count = Math.ceil(days / divisor);
+    const count = unit.calendarBased
+      ? monthsBetweenInclusive(item.fromDate, item.toDate)
+      : Math.ceil(days / (unit.divisorDays || 1));
     const word = unitWord(unit);
     const countStr = `${count} ${word}${count !== 1 ? 's' : ''}`;
-    return divisor === 1
+    return (!unit.calendarBased && unit.divisorDays === 1)
       ? `${range}<br/><strong>${countStr}</strong>`
       : `${range}<br/><strong>${countStr}</strong> (${days} days)`;
   }
