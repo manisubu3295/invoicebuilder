@@ -74,7 +74,7 @@ function calcPeriodText(item, unitMap = {}) {
       : Math.ceil(days / (unit.divisorDays || 1));
     const word = unitWord(unit);
     const countStr = `${count} ${word}${count !== 1 ? 's' : ''}`;
-    return (!unit.calendarBased && unit.divisorDays === 1)
+    return (unit.calendarBased || unit.divisorDays === 1)
       ? `${range}<br/><strong>${countStr}</strong>`
       : `${range}<br/><strong>${countStr}</strong> (${days} days)`;
   }

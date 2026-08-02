@@ -72,6 +72,7 @@ const paginated = computed(() => filtered.value.slice((page.value - 1) * PAGE_SI
 const monthlySummary = computed(() => {
   const map = {};
   for (const inv of invoices.value) {
+    if (inv.status === 'cancelled') continue;
     const d = inv.date ? new Date(inv.date) : null;
     if (!d || isNaN(d)) continue;
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;

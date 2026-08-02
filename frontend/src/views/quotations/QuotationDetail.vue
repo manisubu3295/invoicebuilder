@@ -59,7 +59,7 @@ function calcPeriod(item) {
       ? monthsBetweenInclusive(item.fromDate, item.toDate)
       : Math.ceil(days / (unit.divisorDays || 1));
     const countStr = `${count} ${unitWord(unit)}${count !== 1 ? 's' : ''}`;
-    return (!unit.calendarBased && unit.divisorDays === 1) ? countStr : `${countStr} (${days}d)`;
+    return (unit.calendarBased || unit.divisorDays === 1) ? countStr : `${countStr} (${days}d)`;
   }
   if (item.rateType === 'per_day') return `${days} day${days !== 1 ? 's' : ''}`;
   return `${Math.ceil(days / 7)} wk (${days}d)`;
