@@ -147,24 +147,24 @@ async function seedIfEmpty() {
     const { v4: uuidv4 } = require('uuid');
     await User.create({
       id: uuidv4(),
-      name: 'AK.BALAN',
+      name: 'Demo Admin',
       username: 'admin',
-      passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD || 'Admin@AKB2026', 10),
+      passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD || 'Admin@Demo2026', 10),
       role: 'admin',
-      phone: '+6584590123',
+      phone: null,
       isActive: true,
     });
     await Client.create({
       id: uuidv4(),
-      companyName: 'Sri Murugan Manufacturing Pte. Ltd.',
-      clientCode: 'SMM',
-      contactPerson: 'Sri Murugan',
+      companyName: 'Sample Logistics Pte. Ltd.',
+      clientCode: 'DEMO',
+      contactPerson: 'Sample Contact',
       email: null,
       phone: null,
       address: 'Singapore',
       isActive: true,
     });
-    logger.info('Seeded: admin user (username: admin) + SMM client');
+    logger.info('Seeded: admin user (username: admin) + DEMO client');
   }
 
   // Seed default billing units (Per Day / Per Week) on every environment, not
@@ -227,7 +227,7 @@ async function startServer() {
     require('./services/backupService').scheduleDailyBackups();
 
     const server = app.listen(PORT, () =>
-      logger.info(`AKB API running on http://localhost:${PORT} [${process.env.NODE_ENV || 'development'}]`)
+      logger.info(`Aadhirai Transport API running on http://localhost:${PORT} [${process.env.NODE_ENV || 'development'}]`)
     );
 
     // Graceful shutdown

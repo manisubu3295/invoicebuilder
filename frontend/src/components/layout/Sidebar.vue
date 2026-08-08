@@ -14,10 +14,10 @@ const route = useRoute();
 onMounted(() => settingsStore.fetchSettings());
 
 const logoText = computed(() => {
-  const text = settingsStore.settings?.logoText || settingsStore.settings?.companyName || 'AKB';
+  const text = settingsStore.settings?.logoText || settingsStore.settings?.companyName || 'ATL';
   return text.substring(0, 3).toUpperCase();
 });
-const companyName = computed(() => settingsStore.settings?.companyName || 'AKB Transport');
+const companyName = computed(() => settingsStore.settings?.companyName || 'Aadhirai Transport');
 
 const navItems = computed(() => {
   if (auth.isDriver) {

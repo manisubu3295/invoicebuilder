@@ -4,17 +4,17 @@ const { v4: uuidv4 } = require('uuid');
 
 module.exports = {
   up: async (queryInterface) => {
-    const passwordHash = await bcrypt.hash('Admin@AKB2026', 10);
+    const passwordHash = await bcrypt.hash('Admin@Demo2026', 10);
     const adminId = uuidv4();
     const clientId = uuidv4();
 
     await queryInterface.bulkInsert('users', [{
       id: adminId,
-      name: 'AK.BALAN',
-      email: 'akbtransportlogistics@gmail.com',
+      name: 'Demo Admin',
+      email: 'admin@aadhirai.com',
       passwordHash,
       role: 'admin',
-      phone: '+6584590123',
+      phone: '',
       isActive: true,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -22,9 +22,9 @@ module.exports = {
 
     await queryInterface.bulkInsert('clients', [{
       id: clientId,
-      companyName: 'Sri Murugan Manufacturing Pte. Ltd.',
-      clientCode: 'SMM',
-      contactPerson: 'Sri Murugan',
+      companyName: 'Sample Logistics Pte. Ltd.',
+      clientCode: 'DEMO',
+      contactPerson: 'Sample Contact',
       email: '',
       phone: '',
       address: 'Singapore',

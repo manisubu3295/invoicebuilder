@@ -34,7 +34,7 @@ const activeSection = ref('dashboard');
 
 const en = {
   title: 'User Guide',
-  subtitle: 'Complete guide for AKB Transport & Logistics system',
+  subtitle: 'Complete guide for Aadhirai Transport & Logistics system',
   langBtn: 'தமிழில் படிக்க',
   toc: 'Contents',
   gettingStarted: 'Getting Started',
@@ -284,7 +284,7 @@ const en = {
 
 const ta = {
   title: 'பயனர் வழிகாட்டி',
-  subtitle: 'AKB Transport & Logistics அமைப்பின் முழுமையான வழிகாட்டி',
+  subtitle: 'Aadhirai Transport & Logistics அமைப்பின் முழுமையான வழிகாட்டி',
   langBtn: 'Read in English',
   toc: 'உள்ளடக்கம்',
   gettingStarted: 'தொடக்க வழிகாட்டுதல்',
@@ -674,7 +674,7 @@ function scrollTo(id) {
 
         <!-- Footer -->
         <div class="text-center py-8 text-sm text-gray-400 dark:text-slate-500">
-          AKB Transport & Logistics &mdash; {{ lang === 'en' ? 'User Guide' : 'பயனர் வழிகாட்டி' }}
+          Aadhirai Transport & Logistics &mdash; {{ lang === 'en' ? 'User Guide' : 'பயனர் வழிகாட்டி' }}
         </div>
 
       </div>

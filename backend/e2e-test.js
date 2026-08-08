@@ -35,7 +35,7 @@ function assert(label, ok, detail) {
 }
 
 async function run() {
-  console.log(`\n🧪  AKB Transport E2E Tests  →  ${BASE}\n`);
+  console.log(`\n🧪  Aadhirai Transport Demo E2E Tests  →  ${BASE}\n`);
 
   // ── Health ──────────────────────────────────────────────────────────────
   console.log('── Health ────────────────────────────────────');
@@ -49,8 +49,8 @@ async function run() {
   assert('Login with wrong credentials returns 401', bad.status === 401);
 
   const login = await req('POST', '/auth/login', {
-    email: process.env.ADMIN_EMAIL || 'akbtransportlogistics@gmail.com',
-    password: process.env.ADMIN_PASSWORD || 'Admin@AKB2026',
+    email: process.env.ADMIN_EMAIL || 'admin@aadhirai.com',
+    password: process.env.ADMIN_PASSWORD || 'Admin@Demo2026',
   }, false);
   assert('Admin login returns 200', login.status === 200, JSON.stringify(login.data));
   assert('Login response has token', !!login.data.token);
@@ -185,8 +185,8 @@ async function run() {
   assert('GET /invoices with invalid token returns 401', badToken.status === 401);
 
   const staffLogin = await req('POST', '/auth/login', {
-    email: process.env.ADMIN_EMAIL || 'akbtransportlogistics@gmail.com',
-    password: process.env.ADMIN_PASSWORD || 'Admin@AKB2026',
+    email: process.env.ADMIN_EMAIL || 'admin@aadhirai.com',
+    password: process.env.ADMIN_PASSWORD || 'Admin@Demo2026',
   }, false);
   // The PATCH /number endpoint must be admin-only
   const patchNoAdmin = await req('PATCH', `/invoices/${testInvoiceId}/number`, { invoiceNo: 'HACK-001' });

@@ -11,7 +11,7 @@ async function sendInvoiceEmail({ to, clientName, invoiceNo, pdfPath, settings =
     });
   }
 
-  const companyName = settings.companyName || 'AKB Transport & Logistics Pte. Ltd.';
+  const companyName = settings.companyName || 'Aadhirai Transport & Logistics';
   const bankRows = [
     settings.bankAccountName ? `<tr><td style="padding:4px 8px"><strong>Account Name:</strong></td><td>${settings.bankAccountName}</td></tr>` : '',
     settings.bankName        ? `<tr><td style="padding:4px 8px"><strong>Bank:</strong></td><td>${settings.bankName}</td></tr>` : '',
@@ -26,7 +26,7 @@ async function sendInvoiceEmail({ to, clientName, invoiceNo, pdfPath, settings =
   const regNo = settings.registrationNo ? `<br/>UEN: ${settings.registrationNo}` : '';
 
   await transporter.sendMail({
-    from: process.env.EMAIL_FROM || `${companyName} <akbtransportlogistics@gmail.com>`,
+    from: process.env.EMAIL_FROM || `${companyName} <demo@aadhiraiinnovations.com>`,
     to,
     subject: `Invoice ${invoiceNo} - ${companyName}`,
     html: `
@@ -54,12 +54,12 @@ async function sendQuotationEmail({ to, clientName, quotationNo, pdfPath, settin
     });
   }
 
-  const companyName = settings.companyName || 'AKB Transport & Logistics Pte. Ltd.';
+  const companyName = settings.companyName || 'Aadhirai Transport & Logistics';
   const phone = settings.phone || '';
   const contactLine = phone ? `<a href="tel:${phone}">${phone}</a>` : 'reply to this email';
 
   await transporter.sendMail({
-    from: process.env.EMAIL_FROM || `${companyName} <akbtransportlogistics@gmail.com>`,
+    from: process.env.EMAIL_FROM || `${companyName} <demo@aadhiraiinnovations.com>`,
     to,
     subject: `Quotation ${quotationNo} - ${companyName}`,
     html: `

@@ -152,12 +152,12 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div class="input-group"><label class="input-label">Company Name *</label><input v-model="form.companyName" class="input-field" placeholder="e.g. AKB Transport Pte Ltd"/></div>
+        <div class="input-group"><label class="input-label">Company Name *</label><input v-model="form.companyName" class="input-field" placeholder="e.g. Aadhirai Transport & Logistics"/></div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div class="input-group"><label class="input-label">Registration / UEN</label><input v-model="form.registrationNo" class="input-field" placeholder="202300001Z"/></div>
           <div class="input-group">
             <label class="input-label">Logo Initials <span class="normal-case font-normal text-gray-400 dark:text-slate-500 text-xs">(3 letters)</span></label>
-            <input v-model="form.logoText" class="input-field" maxlength="3" placeholder="AKB"/>
+            <input v-model="form.logoText" class="input-field" maxlength="3" placeholder="ATL"/>
           </div>
         </div>
         <div class="input-group"><label class="input-label">Address</label><textarea v-model="form.address" class="input-field" rows="3"></textarea></div>

@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'akb',
+      name: 'aadhirai-transport-demo',
       script: 'backend/src/app.js',
       cwd: __dirname,
       instances: 1,
@@ -9,7 +9,7 @@ module.exports = {
       watch: false,
       env_production: {
         NODE_ENV: 'production',
-        PORT: 5000,
+        PORT: 5010,
       },
       max_restarts: 10,
       min_uptime: '10s',

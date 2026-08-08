@@ -123,7 +123,7 @@ const config = require('./src/config/database')[process.env.NODE_ENV || 'develop
       await CompanySettings.create(row);
       ok(`inserted "${row.companyName}"`);
     } else {
-      await CompanySettings.create({ companyName: 'AKB Transport Pte Ltd' });
+      await CompanySettings.create({ companyName: 'Aadhirai Transport & Logistics' });
       ok('created default settings row — fill in details via Settings page');
     }
   } catch (e) {
@@ -142,14 +142,14 @@ const config = require('./src/config/database')[process.env.NODE_ENV || 'develop
     if (count > 0) {
       ok(`${count} user(s) already exist — skipping seed`);
     } else {
-      const adminPass = process.env.ADMIN_PASSWORD || 'Admin@AKB2026';
+      const adminPass = process.env.ADMIN_PASSWORD || 'Admin@Demo2026';
       await User.create({
         id: uuidv4(),
-        name: 'AK.BALAN',
+        name: 'Demo Admin',
         username: 'admin',
         passwordHash: await bcrypt.hash(adminPass, 12),
         role: 'admin',
-        phone: '+6584590123',
+        phone: '',
         isActive: true,
       });
       ok(`admin user created — login with username: admin`);

@@ -43,10 +43,10 @@ async function submit() {
         <!-- Logo -->
         <div class="flex items-center gap-3 mb-auto">
           <div class="w-10 h-10 rounded-xl bg-blue-500 flex items-center justify-center font-bold text-white text-sm tracking-wide shadow-lg">
-            AKB
+            ATL
           </div>
           <div>
-            <div class="text-white font-semibold text-sm leading-tight">AKB Transport Pte Ltd</div>
+            <div class="text-white font-semibold text-sm leading-tight">Aadhirai Transport & Logistics</div>
             <div class="text-blue-300/70 text-xs">Transport &amp; Logistics</div>
           </div>
         </div>
@@ -73,9 +73,9 @@ async function submit() {
               <rect x="274" y="136" width="50" height="28" rx="4" fill="#93c5fd" opacity="0.5"/>
               <!-- Windshield glare -->
               <rect x="278" y="138" width="16" height="8" rx="2" fill="white" opacity="0.2"/>
-              <!-- AKB logo on cargo -->
+              <!-- ATL logo on cargo -->
               <rect x="120" y="133" width="64" height="24" rx="4" fill="#1e3a8a"/>
-              <text x="152" y="150" text-anchor="middle" fill="#93c5fd" font-size="11" font-weight="bold" font-family="sans-serif">AKB</text>
+              <text x="152" y="150" text-anchor="middle" fill="#93c5fd" font-size="11" font-weight="bold" font-family="sans-serif">ATL</text>
               <!-- Wheels -->
               <circle cx="110" cy="186" r="18" fill="#0f172a"/>
               <circle cx="110" cy="186" r="11" fill="#1e293b"/>
@@ -112,7 +112,7 @@ async function submit() {
 
         <!-- Footer -->
         <div class="text-xs text-slate-600 mt-auto">
-          © {{ new Date().getFullYear() }} AKB Transport Pte Ltd · Singapore
+          © {{ new Date().getFullYear() }} Aadhirai Transport & Logistics · Singapore
         </div>
       </div>
     </div>
@@ -122,8 +122,8 @@ async function submit() {
 
       <!-- Mobile logo -->
       <div class="lg:hidden flex items-center gap-2.5 mb-10">
-        <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white text-xs">AKB</div>
-        <span class="text-sm font-semibold text-gray-900">AKB Transport &amp; Logistics</span>
+        <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white text-xs">ATL</div>
+        <span class="text-sm font-semibold text-gray-900">Aadhirai Transport &amp; Logistics</span>
       </div>
 
       <div class="w-full max-w-[360px]">
@@ -233,7 +233,7 @@ async function submit() {
         </div>
 
         <p class="text-center text-xs text-gray-400 mt-6">
-          AKB Transport &amp; Logistics · Singapore
+          Aadhirai Transport &amp; Logistics · Singapore
         </p>
       </div>
     </div>

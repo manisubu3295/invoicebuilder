@@ -1,4 +1,4 @@
-# AKB Transport & Logistics — Setup Guide
+# Aadhirai Transport & Logistics — Setup Guide
 
 ## Prerequisites
 - Node.js 18+
@@ -13,7 +13,7 @@ docker-compose up -d
 ```
 
 ### Option B: Manual PostgreSQL
-Create a database named `akb_transport` and update `backend/.env`.
+Create a database named `aadhirai_transport_demo` and update `backend/.env`.
 
 ## 2. Backend Setup
 
@@ -37,8 +37,8 @@ npm run dev
 Backend runs on: http://localhost:5000
 
 **Default Admin Login:**
-- Email: `akbtransportlogistics@gmail.com`
-- Password: `Admin@AKB2026`
+- Username: `admin`
+- Password: `Admin@Demo2026`
 
 ## 3. Frontend Setup
 
@@ -56,18 +56,18 @@ Frontend runs on: http://localhost:5173
 2. Create an App Password for "Mail"
 3. Set `EMAIL_PASS` in `backend/.env` to the 16-digit app password
 
-## 5. Adding AKB Logo/Stamp to PDF
+## 5. Adding a Logo/Stamp to PDFs
 
 Place these files in `backend/assets/`:
-- `akb-logo.png` — AKB logo (used in PDF top-right)
-- `akb-stamp.png` — Company round stamp (used in PDF signature area)
+- `logo.png` — company logo (used in PDF top-right)
+- `stamp.png` — company round stamp (used in PDF signature area)
 
-Without these files, the PDF will use a placeholder "AKB" text box.
+Without these files, the PDF will use a placeholder text box built from Settings' "Logo Initials".
 
 ## Architecture Summary
 
 ```
-akb-transport/
+quotation/
 ├── frontend/        Vue 3 + Vite + Tailwind CSS + Pinia
 ├── backend/         Node.js + Express + Sequelize + PostgreSQL
 ├── docker-compose.yml
@@ -75,8 +75,8 @@ akb-transport/
 ```
 
 ## Key Features
-- Invoice management with auto-numbering (AKB/SMM/312/2026 format)
-- PDF generation matching existing AKB invoice format
+- Invoice management with configurable auto-numbering (`PREFIX-0001` format)
+- PDF generation with company branding pulled from Settings
 - Email delivery with PDF attachment
 - Quotation → Invoice conversion
 - Delivery job tracking with driver portal
