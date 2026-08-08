@@ -9,7 +9,7 @@ module.exports = {
       watch: false,
       env_production: {
         NODE_ENV: 'production',
-        PORT: 5010,
+        PORT: 5112,
       },
       max_restarts: 10,
       min_uptime: '10s',
