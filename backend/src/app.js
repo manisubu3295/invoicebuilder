@@ -219,6 +219,9 @@ async function startServer() {
   try {
     // alter: { drop: false } adds new columns but never drops existing ones — safe for production
     await sequelize.sync({ alter: { drop: false } });
+    // DBs created by the original migration have users.email NOT NULL; login is by
+    // username now and drivers/users are created without email. Idempotent.
+    await sequelize.query('ALTER TABLE "users" ALTER COLUMN "email" DROP NOT NULL');
     logger.info('Database ready (PostgreSQL)');
     await require('./services/testMode').loadTestMode();
     await seedIfEmpty();
